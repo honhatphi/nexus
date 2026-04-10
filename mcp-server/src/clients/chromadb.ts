@@ -14,14 +14,13 @@ export class ChromaDBClient {
   private collection: Collection | null = null;
 
   constructor(config: Config["chromadb"]) {
-    const options: Record<string, unknown> = { path: config.url };
-    if (config.token) {
-      options.auth = {
-        provider: "token",
-        credentials: config.token,
-      };
-    }
-    this.client = new ChromaClient(options as ConstructorParameters<typeof ChromaClient>[0]);
+    const url = new URL(config.url);
+    this.client = new ChromaClient({
+      ssl: url.protocol === "https:",
+      host: url.hostname,
+      port: parseInt(url.port || (url.protocol === "https:" ? "443" : "8000"), 10),
+      ...(config.token ? { authToken: config.token } : {}),
+    });
     this.collectionName = config.collection;
   }
 

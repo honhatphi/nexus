@@ -118,13 +118,13 @@ export class SyncServiceKnowledge {
     );
 
     // ── ChromaDB ──
-    const chromaOpts: Record<string, unknown> = { path: config.chromadb.url };
-    if (config.chromadb.token) {
-      chromaOpts.auth = { provider: "token", credentials: config.chromadb.token };
-    }
-    this.chromaClient = new ChromaClient(
-      chromaOpts as ConstructorParameters<typeof ChromaClient>[0],
-    );
+    const chromaUrl = new URL(config.chromadb.url);
+    this.chromaClient = new ChromaClient({
+      ssl: chromaUrl.protocol === "https:",
+      host: chromaUrl.hostname,
+      port: parseInt(chromaUrl.port || (chromaUrl.protocol === "https:" ? "443" : "8000"), 10),
+      ...(config.chromadb.token ? { authToken: config.chromadb.token } : {}),
+    });
     this.collectionName = config.chromadb.collection ?? "nexus_code";
 
     // ── Parser ──

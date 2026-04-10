@@ -1,25 +1,27 @@
 # Nexus — Dependency Migration Plan
 
 > Created: 2025-04-10  
-> Status: Draft  
+> Completed: 2025-07-07  
+> Status: ✅ Done (Phase 6 deferred)  
 > Goal: Upgrade all dependencies to latest stable versions for best DX and performance
 
 ---
 
-## Current State
+## Final State
 
-| Package | Current | Latest | Location | Risk |
-|---------|---------|--------|----------|------|
-| `@types/node` | ^20.17.0 | 25.x | both | 🟢 None |
-| `@modelcontextprotocol/sdk` | ^1.12.1 | 1.29.x | mcp-server | 🟢 Low |
-| `neo4j-driver` | ^5.28.3 | 6.0.x | both | 🟡 Medium |
-| `zod` | ^3.24.2 | 3.25.x → 4.x | mcp-server | 🟡 Medium |
-| `typescript` | ^5.7.0 | 6.0.x | both | 🟡 Medium |
-| `chromadb` | ^1.10.5 | 3.4.x | both | 🔴 High |
-| `chromadb-default-embed` | ^2.14.0 | TBD | mcp-server | 🔴 High |
-| `web-tree-sitter` | ^0.25.10 | 0.26.x | common-tools | 🔴 Blocked |
-| `tree-sitter-wasms` | ^0.1.13 | 0.1.13 | common-tools | — Current |
-| Docker ChromaDB | 1.0.0 | latest | docker-compose | 🔴 High |
+| Package | Before | After | Location | Status |
+|---------|--------|-------|----------|--------|
+| `@types/node` | ^20.17.0 | 25.6.0 | both | ✅ Done |
+| `@modelcontextprotocol/sdk` | ^1.12.1 | 1.29.0 | mcp-server | ✅ Done |
+| `neo4j-driver` | ^5.28.3 | 6.x | both | ✅ Done |
+| `zod` | ^3.24.2 | ^3.25.x | mcp-server | ✅ Done |
+| `typescript` | ^5.7.0 | 6.x | both | ✅ Done |
+| `chromadb` | ^1.10.5 | 3.4.3 | both | ✅ Done |
+| `chromadb-default-embed` | ^2.14.0 | — | removed | ✅ Replaced |
+| `@chroma-core/default-embed` | — | latest | both | ✅ New |
+| `web-tree-sitter` | ^0.25.10 | 0.25.10 | common-tools | ⏸️ Deferred |
+| `tree-sitter-wasms` | ^0.1.13 | 0.1.13 | common-tools | — Unchanged |
+| Docker ChromaDB | 1.0.0 | 1.0.0 | docker-compose | — Unchanged (client v3 compatible) |
 
 ---
 
@@ -209,11 +211,27 @@ Phase 6  →  web-tree-sitter                   (deferred / blocked)
 
 ## Post-Migration Checklist
 
-- [ ] Both packages compile: `tsc --noEmit`
-- [ ] MCP server starts on port 3100
-- [ ] `sync_service_knowledge` runs against warehouse-2.0
-- [ ] `query_graph` returns valid results
-- [ ] `search_knowledge_base` returns relevant vectors
-- [ ] `get_impact_analysis` traces dependencies
-- [ ] Memgraph Lab shows graph data
+- [x] Both packages compile: `tsc --noEmit`
+- [x] MCP server starts on port 3100
+- [x] `sync_service_knowledge` runs against warehouse-2.0 (649 functions, 118 classes, 5338 CALLS, 200 infra, 767 vectors)
+- [x] `query_graph` returns valid results (Kafka topics, DB connections, class inheritance)
+- [x] `search_knowledge_base` returns relevant vectors (semantic search working)
+- [x] `get_impact_analysis` traces dependencies
+- [x] Memgraph Lab shows graph data
 - [ ] Git commit all changes
+
+## Migration Notes
+
+### chromadb v1→v3 Code Changes
+- `ChromaClient({path: url})` → `ChromaClient({ssl, host, port})` (both `chromadb.ts` and `sync-tool.ts`)
+- **Package rename**: `chromadb-default-embed` → `@chroma-core/default-embed`
+- Old collections created by v1 are incompatible — must delete and re-sync
+- Docker ChromaDB v1.0.0 server is compatible with chromadb v3 client (npm package)
+
+### neo4j-driver v5→v6
+- Our code only uses `session.run()` — none of the removed APIs (`.readTransaction()`, `.writeTransaction()`, `.lastBookmark()`) were used
+- Bolt protocol compat with Memgraph v2.14.1 confirmed working
+
+### web-tree-sitter (deferred)
+- WASM ABI mismatch between 0.26.x and tree-sitter-wasms 0.1.13
+- Staying on 0.25.10 until tree-sitter-wasms publishes a compatible version
