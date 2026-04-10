@@ -1,0 +1,27 @@
+{
+  "name": "nexus-mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP Server for Nexus AI Agent — Knowledge Base gateway",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch & node --watch dist/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@nexus-hub/common-tools": "file:../nexus-hub/common-tools",
+    "chromadb": "^1.10.5",
+    "chromadb-default-embed": "^2.14.0",
+    "neo4j-driver": "^5.28.3",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "typescript": "^5.7.0"
+  }
+}

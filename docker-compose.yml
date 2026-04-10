@@ -1,0 +1,68 @@
+version: "3.9"
+
+services:
+  # ── Graph Database ────────────────────────────────────────
+  memgraph:
+    image: memgraph/memgraph-platform:${MEMGRAPH_VERSION:-latest}
+    container_name: nexus-memgraph
+    ports:
+      - "${MEMGRAPH_BOLT_PORT:-7687}:7687"
+      - "${MEMGRAPH_WEB_PORT:-3000}:3000"
+    volumes:
+      - memgraph_data:/var/lib/memgraph
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "echo", "RETURN 1;", "|", "mgconsole", "||", "exit", "1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Vector Database ───────────────────────────────────────
+  chromadb:
+    image: chromadb/chroma:${CHROMADB_VERSION:-latest}
+    container_name: nexus-chromadb
+    ports:
+      - "${CHROMADB_PORT:-8000}:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=${CHROMADB_TELEMETRY:-FALSE}
+      - CHROMA_SERVER_AUTHN_CREDENTIALS=${CHROMADB_TOKEN:-}
+      - CHROMA_SERVER_AUTHN_PROVIDER=${CHROMADB_AUTH_PROVIDER:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── MCP Server (Node.js) ─────────────────────────────────
+  mcp-server:
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile
+    container_name: nexus-mcp-server
+    ports:
+      - "${MCP_SERVER_PORT:-3100}:3100"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - MCP_SERVER_PORT=3100
+      - MEMGRAPH_URI=bolt://memgraph:7687
+      - MEMGRAPH_USER=${MEMGRAPH_USER:-}
+      - MEMGRAPH_PASSWORD=${MEMGRAPH_PASSWORD:-}
+      - CHROMADB_URL=http://chromadb:8000
+      - CHROMADB_TOKEN=${CHROMADB_TOKEN:-}
+      - CHROMADB_COLLECTION=${CHROMADB_COLLECTION:-nexus_codebase}
+    depends_on:
+      memgraph:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  memgraph_data:
+  chroma_data:

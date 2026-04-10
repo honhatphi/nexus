@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Lock files (regenerated on install)
+package-lock.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# Services (local-only codebases, not part of Nexus source)
+services/
+
+# Docker volumes
+memgraph_data/
+chroma_data/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Python (warehouse-2.0)
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
