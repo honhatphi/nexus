@@ -8,13 +8,6 @@
       "program": "${workspaceFolder:🔧 MCP Server}/dist/index.js",
       "cwd": "${workspaceFolder:🔧 MCP Server}",
       "preLaunchTask": "🔨 Build: All",
-      "env": {
-        "MEMGRAPH_URI": "bolt://localhost:7687",
-        "CHROMADB_URL": "http://localhost:8000",
-        "CHROMADB_COLLECTION": "nexus_codebase",
-        "MCP_SERVER_PORT": "3100",
-        "NODE_ENV": "development"
-      },
       "sourceMaps": true,
       "outFiles": ["${workspaceFolder:🔧 MCP Server}/dist/**/*.js"],
       "smartStepOver": true,
