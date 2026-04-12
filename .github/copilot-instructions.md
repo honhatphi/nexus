@@ -6,6 +6,7 @@ Nexus is an AI Agent system that assists developers by leveraging a centralized 
 Every suggestion, refactor, or code generation must be grounded in verified knowledge from the KB.
 
 The project follows a **Hub & Spoke** architecture:
+
 - **Hub** (`/nexus-hub`) — Centralized knowledge: Global Skills, Shared KB, Patterns, Prompts + Common Tools (parser, sync).
 - **Spokes** (`/services/*`) — Independent microservices, each with its own tech stack (local only, not tracked in git).
 
@@ -34,6 +35,7 @@ nexus-hub/
 ```
 
 **Rules:**
+
 1. Before any code change, search `/nexus-hub/knowledge-base` for relevant context.
 2. Before applying a pattern, check `/nexus-hub/patterns` for an existing standardized version.
 3. When a new pattern emerges in a local service and is reusable, **promote it to the Hub**.
@@ -45,6 +47,7 @@ Each spoke is an independent microservice with its own tech stack, defined in `/
 Services live locally and are **not tracked in git** — they are analyzed by the MCP pipeline.
 
 **Rules:**
+
 1. Each service owns its own code, tests, and local configuration.
 2. Do not mix runtimes across services (e.g., no Python imports in a Go service).
 3. Cross-service communication must go through defined APIs, never direct code imports.
@@ -93,6 +96,7 @@ get_impact_analysis({ name: "PaymentService", maxDepth: 3 })
 ```
 
 **Rules:**
+
 1. Nếu hàm/module bị gọi bởi service khác → **không được thay đổi signature** mà không có approval.
 2. Nếu cần thay đổi contract → tạo version mới (v2) song song, không sửa version cũ.
 3. Agent phải liệt kê **tất cả service bị ảnh hưởng** trước khi đề xuất thay đổi.
@@ -176,13 +180,13 @@ Nexus/
 
 The MCP server (`/mcp-server`) exposes 5 tools via HTTP on port 3100:
 
-| Tool | Purpose |
-|------|---------|
+| Tool                     | Purpose                                                              |
+| ------------------------ | -------------------------------------------------------------------- |
 | `sync_service_knowledge` | Parse service code → upsert to Memgraph (graph) + ChromaDB (vectors) |
-| `parse_code` | Parse a single file/snippet with tree-sitter |
-| `query_graph` | Execute Cypher queries against Memgraph |
-| `search_knowledge_base` | Semantic search against ChromaDB vectors |
-| `get_impact_analysis` | Trace transitive dependencies for a function/file |
+| `parse_code`             | Parse a single file/snippet with tree-sitter                         |
+| `query_graph`            | Execute Cypher queries against Memgraph                              |
+| `search_knowledge_base`  | Semantic search against ChromaDB vectors                             |
+| `get_impact_analysis`    | Trace transitive dependencies for a function/file                    |
 
 ---
 
@@ -221,17 +225,17 @@ Các Global Skills sau đây áp dụng cho **toàn bộ project** (mọi servic
 
 ## Summary of Core Rules
 
-| # | Rule | Priority |
-|---|------|----------|
-| 1 | Nexus Hub là nguồn tri thức DUY NHẤT — luôn consult trước | Critical |
-| 2 | Dùng `query_graph` kiểm tra cross-service dependencies trước khi code | Critical |
-| 3 | Zero regression — stability of existing code comes first | Critical |
-| 4 | Always search Hub + call `search_knowledge_base` before any suggestion | Required |
-| 5 | Each service owns its stack; no cross-service runtime mixing | Required |
-| 6 | Global Skills (Security + API Design) apply to ALL sub-projects | Required |
-| 7 | Khi thêm service mới vào `/services/`, gợi ý chạy `sync_service_knowledge` | Required |
-| 8 | Clean Code + SOLID principles for all new code | Required |
-| 9 | Tuân thủ Git Flow — branch naming, Conventional Commits, PR trước khi merge | Required |
+| #   | Rule                                                                        | Priority |
+| --- | --------------------------------------------------------------------------- | -------- |
+| 1   | Nexus Hub là nguồn tri thức DUY NHẤT — luôn consult trước                   | Critical |
+| 2   | Dùng `query_graph` kiểm tra cross-service dependencies trước khi code       | Critical |
+| 3   | Zero regression — stability of existing code comes first                    | Critical |
+| 4   | Always search Hub + call `search_knowledge_base` before any suggestion      | Required |
+| 5   | Each service owns its stack; no cross-service runtime mixing                | Required |
+| 6   | Global Skills (Security + API Design) apply to ALL sub-projects             | Required |
+| 7   | Khi thêm service mới vào `/services/`, gợi ý chạy `sync_service_knowledge`  | Required |
+| 8   | Clean Code + SOLID principles for all new code                              | Required |
+| 9   | Tuân thủ Git Flow — branch naming, Conventional Commits, PR trước khi merge | Required |
 
 ---
 
@@ -255,6 +259,7 @@ refactor/<name>  ─ code restructure without behavior change
 ```
 
 **Branch naming rules:**
+
 - Lowercase, hyphen-separated: `feature/add-search-endpoint`, `fix/memgraph-dns`
 - No uppercase, no underscores, no spaces
 - Scope should match the commit scope
@@ -298,6 +303,7 @@ refactor/<name>  ─ code restructure without behavior change
 | `workflows` | Agentic workflow docs |
 
 **Examples:**
+
 ```bash
 feat(mcp-server): add GET /v1/impact endpoint
 fix(devcontainer): correct memgraph container DNS to bolt://memgraph:7687
@@ -323,6 +329,7 @@ When asked to commit or push, agent MUST follow this sequence:
 ### Breaking Changes
 
 If a commit introduces a breaking change to any public API or contract:
+
 ```
 feat(mcp-server)!: change tool response format to envelope pattern
 
@@ -342,4 +349,3 @@ Clients must update response parsing.
 2. PR title must follow Conventional Commits format.
 3. PR description must include: **What changed**, **Why**, **How to test**.
 4. Squash-merge preferred to keep history clean.
-
