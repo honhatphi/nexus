@@ -46,15 +46,11 @@
     "CHROMADB_COLLECTION": "nexus_codebase",
     "MCP_SERVER_PORT": "3100"
   },
-  "terminal.integrated.env.linux": {
-    "MEMGRAPH_URI": "bolt://localhost:7687",
-    "CHROMADB_URL": "http://localhost:8000",
-    "CHROMADB_COLLECTION": "nexus_codebase",
-    "MCP_SERVER_PORT": "3100"
-  },
+  // Container env vars (MEMGRAPH_URI, etc.) are set by docker-compose.dev.yml
+  // Do NOT override terminal.integrated.env.linux here — it conflicts with container DNS
 
-  // Neo4j Viz — connect to Memgraph
-  "neo4j-viz.connection.url": "bolt://localhost:7687",
+  // Memgraph Lab extension — container DNS (devcontainer)
+  "neo4j-viz.connection.url": "bolt://memgraph:7687",
   "neo4j-viz.connection.user": "",
   "neo4j-viz.connection.password": ""
 }

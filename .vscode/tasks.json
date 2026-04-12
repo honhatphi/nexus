@@ -26,7 +26,11 @@
       "command": "docker compose logs -f",
       "options": { "cwd": "${workspaceFolder:🏛️ Nexus Root}" },
       "group": "none",
-      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
       "problemMatcher": []
     },
     // ── Install ───────────────────────────────────────────────
@@ -134,18 +138,16 @@
       "type": "shell",
       "command": "node dist/index.js",
       "options": {
-        "cwd": "${workspaceFolder:🔧 MCP Server}",
-        "env": {
-          "MEMGRAPH_URI": "bolt://localhost:7687",
-          "CHROMADB_URL": "http://localhost:8000",
-          "CHROMADB_COLLECTION": "nexus_codebase",
-          "MCP_SERVER_PORT": "3100"
-        }
+        "cwd": "${workspaceFolder:🔧 MCP Server}"
       },
       "dependsOn": ["🔨 Build: All"],
       "group": "none",
       "isBackground": true,
-      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
       "problemMatcher": {
         "owner": "nexus-mcp",
         "pattern": {
@@ -165,7 +167,11 @@
     {
       "label": "⚡ Full Stack: Start All",
       "dependsOrder": "sequence",
-      "dependsOn": ["🐳 Docker: Start Infra", "🔨 Build: All", "🚀 Start: MCP Server"],
+      "dependsOn": [
+        "🐳 Docker: Start Infra",
+        "🔨 Build: All",
+        "🚀 Start: MCP Server"
+      ],
       "group": "none",
       "problemMatcher": []
     },

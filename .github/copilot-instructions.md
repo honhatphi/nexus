@@ -6,6 +6,7 @@ Nexus is an AI Agent system that assists developers by leveraging a centralized 
 Every suggestion, refactor, or code generation must be grounded in verified knowledge from the KB.
 
 The project follows a **Hub & Spoke** architecture:
+
 - **Hub** (`/nexus-hub`) — Centralized knowledge: Global Skills, Shared KB, Patterns, Prompts + Common Tools (parser, sync).
 - **Spokes** (`/services/*`) — Independent microservices, each with its own tech stack (local only, not tracked in git).
 
@@ -34,6 +35,7 @@ nexus-hub/
 ```
 
 **Rules:**
+
 1. Before any code change, search `/nexus-hub/knowledge-base` for relevant context.
 2. Before applying a pattern, check `/nexus-hub/patterns` for an existing standardized version.
 3. When a new pattern emerges in a local service and is reusable, **promote it to the Hub**.
@@ -45,6 +47,7 @@ Each spoke is an independent microservice with its own tech stack, defined in `/
 Services live locally and are **not tracked in git** — they are analyzed by the MCP pipeline.
 
 **Rules:**
+
 1. Each service owns its own code, tests, and local configuration.
 2. Do not mix runtimes across services (e.g., no Python imports in a Go service).
 3. Cross-service communication must go through defined APIs, never direct code imports.
@@ -93,6 +96,7 @@ get_impact_analysis({ name: "PaymentService", maxDepth: 3 })
 ```
 
 **Rules:**
+
 1. Nếu hàm/module bị gọi bởi service khác → **không được thay đổi signature** mà không có approval.
 2. Nếu cần thay đổi contract → tạo version mới (v2) song song, không sửa version cũ.
 3. Agent phải liệt kê **tất cả service bị ảnh hưởng** trước khi đề xuất thay đổi.
@@ -176,13 +180,13 @@ Nexus/
 
 The MCP server (`/mcp-server`) exposes 5 tools via HTTP on port 3100:
 
-| Tool | Purpose |
-|------|---------|
+| Tool                     | Purpose                                                              |
+| ------------------------ | -------------------------------------------------------------------- |
 | `sync_service_knowledge` | Parse service code → upsert to Memgraph (graph) + ChromaDB (vectors) |
-| `parse_code` | Parse a single file/snippet with tree-sitter |
-| `query_graph` | Execute Cypher queries against Memgraph |
-| `search_knowledge_base` | Semantic search against ChromaDB vectors |
-| `get_impact_analysis` | Trace transitive dependencies for a function/file |
+| `parse_code`             | Parse a single file/snippet with tree-sitter                         |
+| `query_graph`            | Execute Cypher queries against Memgraph                              |
+| `search_knowledge_base`  | Semantic search against ChromaDB vectors                             |
+| `get_impact_analysis`    | Trace transitive dependencies for a function/file                    |
 
 ---
 
@@ -221,13 +225,127 @@ Các Global Skills sau đây áp dụng cho **toàn bộ project** (mọi servic
 
 ## Summary of Core Rules
 
-| # | Rule | Priority |
-|---|------|----------|
-| 1 | Nexus Hub là nguồn tri thức DUY NHẤT — luôn consult trước | Critical |
-| 2 | Dùng `query_graph` kiểm tra cross-service dependencies trước khi code | Critical |
-| 3 | Zero regression — stability of existing code comes first | Critical |
-| 4 | Always search Hub + call `search_knowledge_base` before any suggestion | Required |
-| 5 | Each service owns its stack; no cross-service runtime mixing | Required |
-| 6 | Global Skills (Security + API Design) apply to ALL sub-projects | Required |
-| 7 | Khi thêm service mới vào `/services/`, gợi ý chạy `sync_service_knowledge` | Required |
-| 8 | Clean Code + SOLID principles for all new code | Required |
+| #   | Rule                                                                        | Priority |
+| --- | --------------------------------------------------------------------------- | -------- |
+| 1   | Nexus Hub là nguồn tri thức DUY NHẤT — luôn consult trước                   | Critical |
+| 2   | Dùng `query_graph` kiểm tra cross-service dependencies trước khi code       | Critical |
+| 3   | Zero regression — stability of existing code comes first                    | Critical |
+| 4   | Always search Hub + call `search_knowledge_base` before any suggestion      | Required |
+| 5   | Each service owns its stack; no cross-service runtime mixing                | Required |
+| 6   | Global Skills (Security + API Design) apply to ALL sub-projects             | Required |
+| 7   | Khi thêm service mới vào `/services/`, gợi ý chạy `sync_service_knowledge`  | Required |
+| 8   | Clean Code + SOLID principles for all new code                              | Required |
+| 9   | Tuân thủ Git Flow — branch naming, Conventional Commits, PR trước khi merge | Required |
+
+---
+
+## Git Flow & Conventional Commits
+
+> Agent phải tuân thủ Git Flow khi thực hiện git operations. **Không commit trực tiếp vào `master`/`main`** trừ khi được yêu cầu override tường minh.
+
+### Branch Model
+
+```
+master  ─────────────────────────────────────── production-ready
+           ↑ PR merge only
+develop ─────────────────────────────────────── integration (optional for solo)
+           ↑ PR merge only
+feature/<name>   ─ new features
+fix/<name>       ─ bug fixes
+hotfix/<name>    ─ urgent production fixes (branch off master)
+chore/<name>     ─ maintenance, deps, tooling
+docs/<name>      ─ documentation only
+refactor/<name>  ─ code restructure without behavior change
+```
+
+**Branch naming rules:**
+
+- Lowercase, hyphen-separated: `feature/add-search-endpoint`, `fix/memgraph-dns`
+- No uppercase, no underscores, no spaces
+- Scope should match the commit scope
+
+### Conventional Commits Format
+
+```
+<type>(<scope>): <short description>
+
+[optional body — explain WHY, not WHAT]
+
+[optional footer — BREAKING CHANGE: ..., Closes #123]
+```
+
+**Types:**
+| Type | When to use |
+|------|-------------|
+| `feat` | New feature or capability |
+| `fix` | Bug fix |
+| `chore` | Tooling, config, maintenance (no production code change) |
+| `docs` | Documentation only |
+| `refactor` | Code change that neither fixes a bug nor adds a feature |
+| `test` | Adding or updating tests |
+| `ci` | CI/CD pipeline changes |
+| `perf` | Performance improvement |
+| `style` | Formatting, whitespace (no logic change) |
+| `revert` | Reverts a previous commit |
+
+**Scopes for this project:**
+| Scope | What it covers |
+|-------|---------------|
+| `devcontainer` | `.devcontainer/` — Docker dev environment |
+| `mcp-server` | `/mcp-server/` — MCP tool gateway |
+| `common-tools` | `/nexus-hub/common-tools/` — Parser & sync engine |
+| `nexus-hub` | `/nexus-hub/knowledge-base|patterns|skills|prompts/` |
+| `infra` | `docker-compose.yml`, infrastructure config |
+| `workspace` | `nexus.code-workspace`, `.vscode/` settings |
+| `deps` | Dependency upgrades |
+| `release` | Version bumps, changelog |
+| `agents` | Agent JSON configs |
+| `workflows` | Agentic workflow docs |
+
+**Examples:**
+
+```bash
+feat(mcp-server): add GET /v1/impact endpoint
+fix(devcontainer): correct memgraph container DNS to bolt://memgraph:7687
+chore(deps): upgrade npm to 11.12.1
+chore(workspace): remove duplicate settings from devcontainer.json
+docs(nexus-hub): add api-design pattern to knowledge-base
+refactor(common-tools): extract language detection to separate module
+ci(infra): add healthcheck to chromadb in docker-compose
+```
+
+### Agent Git Workflow
+
+When asked to commit or push, agent MUST follow this sequence:
+
+1. **Check branch** — `git branch --show-current`. If on `master`/`main`, create a feature branch first.
+2. **Review changes** — `git diff --stat` to understand what changed.
+3. **Group changes** — separate commits by scope/type. Do NOT mix feat + chore in one commit.
+4. **Stage selectively** — `git add <specific files>`, not `git add -A` blindly.
+5. **Compose message** — follow Conventional Commits format above.
+6. **Commit** — validate message matches the hook pattern.
+7. **Push** — `git push -u origin <branch>`.
+
+### Breaking Changes
+
+If a commit introduces a breaking change to any public API or contract:
+
+```
+feat(mcp-server)!: change tool response format to envelope pattern
+
+BREAKING CHANGE: All tool responses now wrapped in { data, error, meta }.
+Clients must update response parsing.
+```
+
+### Git Hooks (auto-enforced)
+
+- **`commit-msg`** — validates Conventional Commits format on every commit (`/scripts/commit-msg`)
+- **`pre-commit`** — blocks direct commits to `master`/`main` (`/scripts/pre-commit`)
+- Hooks are installed automatically via `postCreateCommand` on devcontainer create
+
+### PR Rules
+
+1. Every branch must have a Pull Request before merging to `master`.
+2. PR title must follow Conventional Commits format.
+3. PR description must include: **What changed**, **Why**, **How to test**.
+4. Squash-merge preferred to keep history clean.

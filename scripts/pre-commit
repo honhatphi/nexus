@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# ─── pre-commit hook ──────────────────────────────────────────────────────────
+# Prevents committing directly to master/main
+# ─────────────────────────────────────────────────────────────────────────────
+
+BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
+PROTECTED_BRANCHES="^(master|main)$"
+
+if echo "$BRANCH" | grep -qE "$PROTECTED_BRANCHES"; then
+  echo ""
+  echo "  ❌  Direct commits to '$BRANCH' are not allowed."
+  echo ""
+  echo "  Please create a feature/fix/chore branch first:"
+  echo "     git checkout -b feat/<name>"
+  echo "     git checkout -b fix/<name>"
+  echo "     git checkout -b chore/<name>"
+  echo "     git checkout -b hotfix/<name>"
+  echo ""
+  echo "  Then open a Pull Request to merge into $BRANCH."
+  echo ""
+  exit 1
+fi
+
+exit 0
