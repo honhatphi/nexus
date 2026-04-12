@@ -4,7 +4,7 @@
 // ChromaDB (vector embeddings).
 // ─────────────────────────────────────────────────────────────
 
-export type SupportedLanguage = "go" | "python" | "php" | "typescript";
+export type SupportedLanguage = "go" | "python" | "php" | "typescript" | "csharp";
 
 export const EXTENSION_MAP: Record<string, SupportedLanguage> = {
   ".go": "go",
@@ -12,6 +12,7 @@ export const EXTENSION_MAP: Record<string, SupportedLanguage> = {
   ".php": "php",
   ".ts": "typescript",
   ".tsx": "typescript",
+  ".cs": "csharp",
 };
 
 // ── Symbol-level types ───────────────────────────────────────

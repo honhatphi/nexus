@@ -1,0 +1,60 @@
+{
+  // TypeScript SDK — use local version from mcp-server
+  "typescript.tsdk": "mcp-server/node_modules/typescript/lib",
+  "typescript.preferences.excludeLibrarySymbolsInNavTo": true,
+
+  // Editor
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+
+  // File/Search exclusions
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/.git": true,
+    "**/services": true
+  },
+  "files.exclude": {
+    "**/node_modules": true
+  },
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/dist/**": true
+  },
+
+  // File nesting — group compiled output under source files
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.patterns": {
+    "*.ts": "${capture}.js, ${capture}.d.ts, ${capture}.js.map, ${capture}.d.ts.map",
+    "tsconfig.json": "tsconfig.*.json",
+    "package.json": "package-lock.json, .npmrc"
+  },
+
+  // Terminal env — auto-inject env vars in every terminal
+  "terminal.integrated.env.osx": {
+    "MEMGRAPH_URI": "bolt://localhost:7687",
+    "CHROMADB_URL": "http://localhost:8000",
+    "CHROMADB_COLLECTION": "nexus_codebase",
+    "MCP_SERVER_PORT": "3100"
+  },
+  "terminal.integrated.env.linux": {
+    "MEMGRAPH_URI": "bolt://localhost:7687",
+    "CHROMADB_URL": "http://localhost:8000",
+    "CHROMADB_COLLECTION": "nexus_codebase",
+    "MCP_SERVER_PORT": "3100"
+  },
+
+  // Neo4j Viz — connect to Memgraph
+  "neo4j-viz.connection.url": "bolt://localhost:7687",
+  "neo4j-viz.connection.user": "",
+  "neo4j-viz.connection.password": ""
+}

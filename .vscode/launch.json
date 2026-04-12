@@ -1,0 +1,73 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "🔧 Debug: MCP Server",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder:🔧 MCP Server}/dist/index.js",
+      "cwd": "${workspaceFolder:🔧 MCP Server}",
+      "preLaunchTask": "🔨 Build: All",
+      "env": {
+        "MEMGRAPH_URI": "bolt://localhost:7687",
+        "CHROMADB_URL": "http://localhost:8000",
+        "CHROMADB_COLLECTION": "nexus_codebase",
+        "MCP_SERVER_PORT": "3100",
+        "NODE_ENV": "development"
+      },
+      "sourceMaps": true,
+      "outFiles": ["${workspaceFolder:🔧 MCP Server}/dist/**/*.js"],
+      "smartStepOver": true,
+      "console": "integratedTerminal",
+      "restart": true
+    },
+    {
+      "name": "🔧 Attach: MCP Server (running)",
+      "type": "node",
+      "request": "attach",
+      "port": 9229,
+      "cwd": "${workspaceFolder:🔧 MCP Server}",
+      "sourceMaps": true,
+      "outFiles": ["${workspaceFolder:🔧 MCP Server}/dist/**/*.js"],
+      "smartStepOver": true,
+      "restart": true
+    },
+    {
+      "name": "📦 Debug: Universal Parser",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder:📦 Common Tools}/dist/index.js",
+      "cwd": "${workspaceFolder:📦 Common Tools}",
+      "preLaunchTask": "🔨 Build: Common Tools",
+      "env": {
+        "NODE_ENV": "development"
+      },
+      "sourceMaps": true,
+      "outFiles": ["${workspaceFolder:📦 Common Tools}/dist/**/*.js"],
+      "smartStepOver": true,
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "🧪 Debug: Integration Test",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder:🔧 MCP Server}/test-sync.mjs",
+      "cwd": "${workspaceFolder:🔧 MCP Server}",
+      "env": {
+        "MEMGRAPH_URI": "bolt://localhost:7687",
+        "CHROMADB_URL": "http://localhost:8000",
+        "CHROMADB_COLLECTION": "nexus_codebase",
+        "MCP_SERVER_PORT": "3100"
+      },
+      "console": "integratedTerminal"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "⚡ Full Stack: Debug Mode",
+      "configurations": ["🔧 Debug: MCP Server"],
+      "preLaunchTask": "🐳 Docker: Start Infra",
+      "stopAll": true
+    }
+  ]
+}

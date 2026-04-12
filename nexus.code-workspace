@@ -1,0 +1,76 @@
+{
+  "folders": [
+    {
+      "name": "🏛️ Nexus Root",
+      "path": "."
+    },
+    {
+      "name": "🔧 MCP Server",
+      "path": "mcp-server"
+    },
+    {
+      "name": "📦 Common Tools",
+      "path": "nexus-hub/common-tools"
+    }
+  ],
+  "settings": {
+    "typescript.tsdk": "mcp-server/node_modules/typescript/lib",
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "[typescript]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[json]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/dist": true,
+      "**/.git": true,
+      "**/services": true
+    },
+    "files.exclude": {
+      "**/node_modules": true,
+      "**/.git": true
+    },
+    "explorer.fileNesting.enabled": true,
+    "explorer.fileNesting.patterns": {
+      "*.ts": "${capture}.js, ${capture}.d.ts, ${capture}.js.map, ${capture}.d.ts.map",
+      "tsconfig.json": "tsconfig.*.json",
+      "package.json": "package-lock.json, .npmrc"
+    },
+    "terminal.integrated.env.osx": {
+      "MEMGRAPH_URI": "bolt://localhost:7687",
+      "CHROMADB_URL": "http://localhost:8000",
+      "CHROMADB_COLLECTION": "nexus_codebase",
+      "MCP_SERVER_PORT": "3100"
+    },
+    "terminal.integrated.env.linux": {
+      "MEMGRAPH_URI": "bolt://localhost:7687",
+      "CHROMADB_URL": "http://localhost:8000",
+      "CHROMADB_COLLECTION": "nexus_codebase",
+      "MCP_SERVER_PORT": "3100"
+    },
+    "typescript.preferences.excludeLibrarySymbolsInNavTo": true
+  },
+  "extensions": {
+    "recommendations": [
+      "GitHub.copilot",
+      "GitHub.copilot-chat",
+      "ms-azuretools.vscode-docker",
+      "esbenp.prettier-vscode",
+      "dbaeumer.vscode-eslint",
+      "bevel.neo4j-viz",
+      "michael-ermer.chromadb-viewer"
+    ],
+    "unwantedRecommendations": []
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": []
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": []
+  }
+}

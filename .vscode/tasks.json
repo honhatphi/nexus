@@ -1,0 +1,183 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    // ── Infrastructure ────────────────────────────────────────
+    {
+      "label": "🐳 Docker: Start Infra",
+      "type": "shell",
+      "command": "docker compose up memgraph chromadb -d",
+      "options": { "cwd": "${workspaceFolder:🏛️ Nexus Root}" },
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "🐳 Docker: Stop Infra",
+      "type": "shell",
+      "command": "docker compose down",
+      "options": { "cwd": "${workspaceFolder:🏛️ Nexus Root}" },
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "🐳 Docker: Logs",
+      "type": "shell",
+      "command": "docker compose logs -f",
+      "options": { "cwd": "${workspaceFolder:🏛️ Nexus Root}" },
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "problemMatcher": []
+    },
+    // ── Install ───────────────────────────────────────────────
+    {
+      "label": "📦 Install: Common Tools",
+      "type": "shell",
+      "command": "npm install",
+      "options": { "cwd": "${workspaceFolder:📦 Common Tools}" },
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      "label": "📦 Install: MCP Server",
+      "type": "shell",
+      "command": "npm install",
+      "options": { "cwd": "${workspaceFolder:🔧 MCP Server}" },
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      "label": "📦 Install: All",
+      "dependsOrder": "sequence",
+      "dependsOn": ["📦 Install: Common Tools", "📦 Install: MCP Server"],
+      "group": "none",
+      "problemMatcher": []
+    },
+    // ── Build ─────────────────────────────────────────────────
+    {
+      "label": "🔨 Build: Common Tools",
+      "type": "shell",
+      "command": "npm run build",
+      "options": { "cwd": "${workspaceFolder:📦 Common Tools}" },
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "🔨 Build: MCP Server",
+      "type": "shell",
+      "command": "npm run build",
+      "options": { "cwd": "${workspaceFolder:🔧 MCP Server}" },
+      "dependsOn": ["🔨 Build: Common Tools"],
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "🔨 Build: All",
+      "dependsOrder": "sequence",
+      "dependsOn": ["🔨 Build: Common Tools", "🔨 Build: MCP Server"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$tsc"]
+    },
+    // ── Watch ─────────────────────────────────────────────────
+    {
+      "label": "👁️ Watch: Common Tools",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": { "cwd": "${workspaceFolder:📦 Common Tools}" },
+      "group": "none",
+      "isBackground": true,
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": {
+        "owner": "typescript",
+        "source": "ts",
+        "applyTo": "closedDocuments",
+        "fileLocation": ["relative", "${workspaceFolder:📦 Common Tools}"],
+        "pattern": "$tsc",
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Starting compilation",
+          "endsPattern": "Found 0 errors|error TS"
+        }
+      }
+    },
+    {
+      "label": "👁️ Watch: MCP Server",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": { "cwd": "${workspaceFolder:🔧 MCP Server}" },
+      "group": "none",
+      "isBackground": true,
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": {
+        "owner": "typescript",
+        "source": "ts",
+        "applyTo": "closedDocuments",
+        "fileLocation": ["relative", "${workspaceFolder:🔧 MCP Server}"],
+        "pattern": "$tsc",
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Starting compilation",
+          "endsPattern": "Found 0 errors|error TS"
+        }
+      }
+    },
+    // ── MCP Server ────────────────────────────────────────────
+    {
+      "label": "🚀 Start: MCP Server",
+      "type": "shell",
+      "command": "node dist/index.js",
+      "options": {
+        "cwd": "${workspaceFolder:🔧 MCP Server}",
+        "env": {
+          "MEMGRAPH_URI": "bolt://localhost:7687",
+          "CHROMADB_URL": "http://localhost:8000",
+          "CHROMADB_COLLECTION": "nexus_codebase",
+          "MCP_SERVER_PORT": "3100"
+        }
+      },
+      "dependsOn": ["🔨 Build: All"],
+      "group": "none",
+      "isBackground": true,
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "problemMatcher": {
+        "owner": "nexus-mcp",
+        "pattern": {
+          "regexp": ".",
+          "file": 1,
+          "line": 1,
+          "message": 1
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Nexus MCP Server",
+          "endsPattern": "running on http"
+        }
+      }
+    },
+    // ── Full Stack ────────────────────────────────────────────
+    {
+      "label": "⚡ Full Stack: Start All",
+      "dependsOrder": "sequence",
+      "dependsOn": ["🐳 Docker: Start Infra", "🔨 Build: All", "🚀 Start: MCP Server"],
+      "group": "none",
+      "problemMatcher": []
+    },
+    // ── Test ──────────────────────────────────────────────────
+    {
+      "label": "🧪 Test: Integration Pipeline",
+      "type": "shell",
+      "command": "node test-sync.mjs",
+      "options": { "cwd": "${workspaceFolder:🔧 MCP Server}" },
+      "group": "test",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    }
+  ]
+}

@@ -42,6 +42,7 @@ export class CodeParser {
     python: "tree-sitter-python.wasm",
     php: "tree-sitter-php.wasm",
     typescript: "tree-sitter-typescript.wasm",
+    csharp: "tree-sitter-c_sharp.wasm",
   };
 
   // ── Init & Language Loading ──────────────────────────────
@@ -121,9 +122,9 @@ export class CodeParser {
     const extractor = EXTRACTORS[language];
     const symbols = extractor(tree.rootNode);
 
-    // Extract classes (currently Python-focused, extensible)
-    const classes = language === "python"
-      ? extractPythonClasses(tree.rootNode)
+    // Extract classes
+    const classes = CLASS_EXTRACTORS[language]
+      ? CLASS_EXTRACTORS[language](tree.rootNode)
       : [];
 
     // Detect infrastructure patterns from all function bodies + imports
@@ -186,8 +187,8 @@ function findAll(root: SyntaxNode, types: string[]): SyntaxNode[] {
 }
 
 function extractCalls(body: SyntaxNode): FunctionCall[] {
-  // "call_expression" → Go, TS; "function_call_expression" → PHP; "call" → Python
-  const callNodes = findAll(body, ["call_expression", "function_call_expression", "call"]);
+  // "call_expression" → Go, TS; "function_call_expression" → PHP; "call" → Python; "invocation_expression" → C#
+  const callNodes = findAll(body, ["call_expression", "function_call_expression", "call", "invocation_expression"]);
   const calls: FunctionCall[] = [];
   for (const node of callNodes) {
     const fn = node.childForFieldName("function") ?? node.firstChild;
@@ -256,7 +257,7 @@ function cleanDocstring(raw: string): string {
     .map((line) =>
       line
         .replace(/^\s*\*\s?/, "")
-        .replace(/^\s*\/\/\s?/, "")
+        .replace(/^\s*\/{2,3}\s?/, "")
         .replace(/^\s*#\s?/, "")
         .trimEnd()
     )
@@ -272,6 +273,7 @@ function resolveKind(nodeType: string): SymbolKind {
   switch (nodeType) {
     case "method_declaration":
     case "method_definition":
+    case "constructor_declaration":
       return "method";
     case "arrow_function":
       return "arrow_function";
@@ -440,6 +442,45 @@ function extractTypeScript(root: SyntaxNode): SymbolInfo[] {
   });
 }
 
+// ── C# ───────────────────────────────────────────────────────
+
+function extractCSharp(root: SyntaxNode): SymbolInfo[] {
+  const funcNodes = findAll(root, [
+    "method_declaration",
+    "constructor_declaration",
+  ]);
+  return funcNodes.map((node) => {
+    const nameNode = node.childForFieldName("name");
+    const paramsNode = node.childForFieldName("parameters");
+    const returnNode = node.childForFieldName("type");
+    const bodyNode = node.childForFieldName("body");
+
+    const params: Parameter[] = [];
+    if (paramsNode) {
+      for (const child of paramsNode.namedChildren) {
+        if (!child || child.type !== "parameter") continue;
+        const pName = child.childForFieldName("name");
+        const pType = child.childForFieldName("type");
+        params.push({ name: textOf(pName), type: textOf(pType) || null });
+      }
+    }
+
+    const isMethod = node.parent?.type === "declaration_list" &&
+      node.parent.parent?.type === "class_declaration";
+
+    return {
+      name: textOf(nameNode),
+      kind: isMethod ? "method" as SymbolKind : "function" as SymbolKind,
+      params,
+      returnType: textOf(returnNode) || null,
+      docstring: extractDocstring(node),
+      calls: bodyNode ? extractCalls(bodyNode) : [],
+      startLine: node.startPosition.row + 1,
+      endLine: node.endPosition.row + 1,
+    };
+  });
+}
+
 // ── Extractor Registry ───────────────────────────────────────
 
 const EXTRACTORS: Record<SupportedLanguage, (root: SyntaxNode) => SymbolInfo[]> = {
@@ -447,10 +488,11 @@ const EXTRACTORS: Record<SupportedLanguage, (root: SyntaxNode) => SymbolInfo[]> 
   python: extractPython,
   php: extractPHP,
   typescript: extractTypeScript,
+  csharp: extractCSharp,
 };
 
 // ─────────────────────────────────────────────────────────────
-// Python Class Extraction
+// Class Extraction
 // ─────────────────────────────────────────────────────────────
 
 function extractPythonClasses(root: SyntaxNode): ClassInfo[] {
@@ -487,6 +529,46 @@ function extractPythonClasses(root: SyntaxNode): ClassInfo[] {
     };
   });
 }
+
+function extractCSharpClasses(root: SyntaxNode): ClassInfo[] {
+  const classNodes = findAll(root, ["class_declaration", "interface_declaration"]);
+  return classNodes.map((node) => {
+    const nameNode = node.childForFieldName("name");
+    const basesNode = node.childForFieldName("bases");
+    const bodyNode = node.childForFieldName("body");
+
+    const bases: string[] = [];
+    if (basesNode) {
+      for (const child of basesNode.namedChildren) {
+        if (!child) continue;
+        bases.push(child.text.trim());
+      }
+    }
+
+    const methods: string[] = [];
+    if (bodyNode) {
+      const methodNodes = findAll(bodyNode, ["method_declaration", "constructor_declaration"]);
+      for (const m of methodNodes) {
+        const mName = m.childForFieldName("name");
+        if (mName) methods.push(mName.text.trim());
+      }
+    }
+
+    return {
+      name: textOf(nameNode),
+      bases,
+      methods,
+      docstring: extractDocstring(node),
+      startLine: node.startPosition.row + 1,
+      endLine: node.endPosition.row + 1,
+    };
+  });
+}
+
+const CLASS_EXTRACTORS: Partial<Record<SupportedLanguage, (root: SyntaxNode) => ClassInfo[]>> = {
+  python: extractPythonClasses,
+  csharp: extractCSharpClasses,
+};
 
 // ─────────────────────────────────────────────────────────────
 // Infrastructure Pattern Detection

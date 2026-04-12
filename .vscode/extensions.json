@@ -1,0 +1,24 @@
+{
+  "recommendations": [
+    // ── AI Assistant ──────────────────────────────────────────
+    "GitHub.copilot",
+    "GitHub.copilot-chat",
+
+    // ── TypeScript / Node.js ──────────────────────────────────
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
+
+    // ── Infrastructure ────────────────────────────────────────
+    "ms-azuretools.vscode-docker",
+
+    // ── Graph DB (Memgraph/Neo4j) ─────────────────────────────
+    "bevel.neo4j-viz",
+
+    // ── Vector DB (ChromaDB) ──────────────────────────────────
+    "michael-ermer.chromadb-viewer"
+  ],
+  "unwantedRecommendations": [
+    "bhaarn.db-services-manager",
+    "tsong-lew.vex-db"
+  ]
+}
