@@ -15,16 +15,6 @@ async function main(): Promise<void> {
   const memgraph = new MemgraphClient(config.memgraph);
   const chromadb = new ChromaDBClient(config.chromadb);
 
-  // ── Create MCP server ──────────────────────────────────────
-  const server = new McpServer({
-    name: "nexus-kb",
-    version: "0.1.0",
-  });
-
-  registerTools(server, memgraph, chromadb);
-  registerParserTool(server);
-  registerSyncTool(server, memgraph, chromadb);
-
   // ── HTTP transport (Streamable HTTP) ───────────────────────
   const httpServer = http.createServer(async (req, res) => {
     // Health check
@@ -34,13 +24,23 @@ async function main(): Promise<void> {
       return;
     }
 
-    // MCP endpoint
+    // MCP endpoint — create a fresh McpServer per connection (required for stateless HTTP)
     if (req.url === "/mcp") {
+      const server = new McpServer({
+        name: "nexus-kb",
+        version: "0.1.0",
+      });
+
+      registerTools(server, memgraph, chromadb);
+      registerParserTool(server);
+      registerSyncTool(server, memgraph, chromadb);
+
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
       });
       res.on("close", () => {
         transport.close();
+        server.close().catch(() => {});
       });
       await server.connect(transport);
       await transport.handleRequest(req, res);

@@ -32,10 +32,11 @@ services:
       - CHROMA_SERVER_AUTHN_PROVIDER=${CHROMADB_AUTH_PROVIDER:-}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8000"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
   # ── MCP Server (Node.js) ─────────────────────────────────
   mcp-server:
