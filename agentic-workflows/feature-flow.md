@@ -1,13 +1,13 @@
 # Feature Flow — Agentic Workflow
 
-Quy trình tự động khi Agent nhận yêu cầu tính năng mới, đảm bảo **Zero Regression** và tuân thủ **Zone Policy**.
+Quy trình tự động khi Agent nhận yêu cầu tính năng mới, đảm bảo **Zero Regression**.
 
 ---
 
 ## Tổng quan
 
 ```
-Request → Impact Analysis → Adapter Proposal → Write Tests (TDD) → Implement → Hooks Verify
+Request → Impact Analysis → Write Tests (TDD) → Implement → Hooks Verify
 ```
 
 ---
@@ -34,60 +34,34 @@ Request → Impact Analysis → Adapter Proposal → Write Tests (TDD) → Imple
 get_impact_analysis({ name: "PaymentService", maxDepth: 3 })
 ```
 
-- Nếu vùng ảnh hưởng chạm vào `/src/legacy/**` → **bắt buộc dùng Adapter** (Bước 3).
-- Nếu chỉ ảnh hưởng `/src/modules/v3/**` → có thể sửa trực tiếp nhưng vẫn phải qua TDD (Bước 4).
-
 **Output:** Báo cáo impact với danh sách dependencies và mức rủi ro.
 
 ---
 
-## Bước 3 — Đề xuất Adapter cho code cũ
-
-Khi tính năng mới cần tương tác với `/src/legacy/**`:
-
-1. **Xác định interface** mà code cũ đang expose.
-2. **Tạo Adapter** trong `/src/adapters/` để bọc (wrap) interface cũ.
-3. Adapter phải:
-   - Giữ nguyên hành vi gốc của legacy code.
-   - Expose interface mới, sạch, tuân thủ SOLID cho Green Zone sử dụng.
-   - Xử lý các quirks/bugs đã biết (tra KB).
-
-```
-/src/adapters/
-└── payment-legacy.adapter.ts   ← Wraps /src/legacy/payment.js
-```
-
-**Nguyên tắc:**
-- KHÔNG sửa bất kỳ file nào trong `/src/legacy/`.
-- Adapter = lớp cách ly duy nhất giữa legacy và v3.
-- Nếu legacy có bug → sửa hành vi trong adapter, ghi chú rõ lý do.
-
-**Output:** File adapter mới + interface definition.
-
----
-
-## Bước 4 — Viết Unit Test trước (TDD)
+## Bước 3 — Viết Unit Test trước (TDD)
 
 Tuân thủ quy trình **Red → Green → Refactor**:
 
-### 4.1 — Red (Viết test thất bại)
+### 3.1 — Red (Viết test thất bại)
+
 - Viết test cho tính năng mới dựa trên spec từ Bước 1.
-- Viết test cho adapter (nếu có) để đảm bảo nó wrap đúng hành vi legacy.
 - Chạy test → **tất cả phải FAIL** (chưa có implementation).
 
-### 4.2 — Green (Viết code tối thiểu)
-- Implement tính năng trong `/src/modules/v3/`.
+### 3.2 — Green (Viết code tối thiểu)
+
+- Implement tính năng trong service.
 - Code chỉ cần đủ để test pass, không over-engineer.
 
-### 4.3 — Refactor
+### 3.3 — Refactor
+
 - Cải thiện code quality: naming, structure, loại bỏ duplication.
 - Chạy lại toàn bộ test → **phải vẫn PASS**.
 
-**Output:** Test files + implementation trong Green Zone.
+**Output:** Test files + implementation.
 
 ---
 
-## Bước 5 — Chạy Hooks kiểm tra regression
+## Bước 4 — Chạy Hooks kiểm tra regression
 
 Trước khi hoàn tất, thực thi chuỗi hooks để đảm bảo code cũ không bị ảnh hưởng:
 
@@ -100,7 +74,6 @@ pre-commit
   └── test:unit     → Chạy unit tests (bao gồm test mới + test cũ)
 
 pre-push
-  ├── test:integration  → Test tích hợp giữa adapter và legacy
   └── test:regression   → Full regression suite
 ```
 
@@ -108,8 +81,7 @@ pre-push
 
 - [ ] Tất cả test cũ vẫn pass.
 - [ ] Không có public interface nào bị thay đổi signature.
-- [ ] Adapter trong `/src/adapters/` vẫn wrap đúng hành vi legacy.
-- [ ] Không có file nào trong `/src/legacy/` bị sửa đổi.
+- [ ] Cross-service dependencies đã được kiểm tra trước khi thay đổi.
 
 **Output:** Báo cáo hook pass/fail. Nếu fail → quay lại bước tương ứng để sửa.
 
@@ -129,26 +101,14 @@ pre-push
 │     analysis()       │
 └────────┬────────────┘
          ▼
-    ┌────┴─────┐
-    │ Chạm     │
-    │ legacy?  │
-    └────┬─────┘
-    Yes  │  No
-    ▼    │   ▼
-┌────────┐ ┌──────────┐
-│3.Adapter│ │ Bỏ qua   │
-│ Proposal│ │ Bước 3   │
-└────┬───┘ └────┬─────┘
-     └─────┬────┘
-           ▼
 ┌─────────────────────┐
-│  4. TDD             │
+│  3. TDD             │
 │  Red → Green →      │
 │  Refactor           │
 └────────┬────────────┘
          ▼
 ┌─────────────────────┐
-│  5. Hooks Verify    │
+│  4. Hooks Verify    │
 │  lint + type-check  │
 │  + regression tests │
 └────────┬────────────┘

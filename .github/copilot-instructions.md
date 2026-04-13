@@ -109,6 +109,44 @@ get_impact_analysis({ name: "PaymentService", maxDepth: 3 })
 
 ---
 
+## Autopilot Safety — PreToolUse Hook
+
+> **Mọi lệnh shell autopilot chạy đều qua hook kiểm duyệt trước khi thực thi.**
+> Hook được cấu hình tại `.github/hooks/safe-commands.json` → gọi `scripts/hooks/check-safe-command.js`.
+
+### Phân loại lệnh
+
+| Quyết định | Ý nghĩa                                   | Ví dụ                                                  |
+| ---------- | ----------------------------------------- | ------------------------------------------------------ |
+| `allow`    | An toàn, tự động cho qua                  | `npm run build`, `git status`, `ls`                    |
+| `ask`      | Có thể gây hại, **yêu cầu user xác nhận** | `rm -rf dist/`, `git reset --hard`, `git push --force` |
+| `deny`     | Nguy hiểm, **chặn ngay lập tức** (exit 2) | `rm -rf /*`, `dd if=`, `mkfs`, `git push -f master`    |
+
+### Các pattern bị DENY (chặn tuyệt đối)
+
+- `rm -rf /` hoặc `rm -rf /*` — xóa toàn bộ filesystem
+- `dd if=` — ghi thẳng vào disk
+- `mkfs` — format filesystem
+- `git push --force origin master/main` — force-push vào nhánh protected
+- `DROP DATABASE/SCHEMA` — xóa toàn bộ database
+
+### Các pattern cần ASK (yêu cầu xác nhận)
+
+- `rm -r` / `rm -f` bất kỳ path nào
+- `git reset --hard`, `git clean -fd`, `git commit --amend`, `git rebase`
+- `git push --force` (mọi nhánh), `git push origin master/main`
+- `git branch -d/-D`, `git push origin --delete`
+- `DROP TABLE`, `TRUNCATE TABLE`
+- `curl/wget | bash/sh` — pipe remote script vào shell
+- `kill -9`, `chmod 777`
+
+### Cập nhật danh sách pattern
+
+**Chỉ** chỉnh sửa `scripts/hooks/check-safe-command.js` khi có lệnh nguy hiểm mới cần bổ sung.
+Không để autopilot tự sửa file hook này — luôn review thủ công.
+
+---
+
 ## Zero Regression Policy
 
 > **Stability of existing code is the #1 priority.** No change should break what already works.
@@ -134,7 +172,9 @@ get_impact_analysis({ name: "PaymentService", maxDepth: 3 })
 ```
 Nexus/
 ├── .github/
-│   └── copilot-instructions.md    # This file — global agent rules
+│   ├── copilot-instructions.md    # This file — global agent rules
+│   └── hooks/
+│       └── safe-commands.json     # PreToolUse safety hook (ALLOW/ASK/DENY)
 ├── nexus-config.yaml               # Hub & Spoke service registry
 ├── docker-compose.yml              # Memgraph + ChromaDB infrastructure
 │
@@ -158,7 +198,6 @@ Nexus/
 │       └── tools/                 #   MCP tools (sync, parse, query, search, impact)
 │
 ├── agents/                        # Agent definitions (JSON configs)
-│   ├── legacy-guardian.json       #   Legacy code analysis & adapter design
 │   ├── nexus-librarian.json       #   Hub knowledge management & sync
 │   └── service-worker.json        #   Service-scoped code execution
 │
@@ -166,9 +205,6 @@ Nexus/
 │   ├── feature-flow.md            #   Feature implementation workflow
 │   ├── maintain-hub.md            #   Hub maintenance workflow
 │   └── sync-workspace.md          #   Full workspace sync workflow
-│
-├── skills/                        # Local skill modules
-│   └── migration-patterns.md      #   Adapter patterns (Go/PHP/Python/TS)
 │
 └── services/                      # 🔗 SPOKES (local only, git-ignored)
     └── warehouse-2.0/             #   Python 3.8 + Airflow ETL platform
@@ -225,17 +261,18 @@ Các Global Skills sau đây áp dụng cho **toàn bộ project** (mọi servic
 
 ## Summary of Core Rules
 
-| #   | Rule                                                                        | Priority |
-| --- | --------------------------------------------------------------------------- | -------- |
-| 1   | Nexus Hub là nguồn tri thức DUY NHẤT — luôn consult trước                   | Critical |
-| 2   | Dùng `query_graph` kiểm tra cross-service dependencies trước khi code       | Critical |
-| 3   | Zero regression — stability of existing code comes first                    | Critical |
-| 4   | Always search Hub + call `search_knowledge_base` before any suggestion      | Required |
-| 5   | Each service owns its stack; no cross-service runtime mixing                | Required |
-| 6   | Global Skills (Security + API Design) apply to ALL sub-projects             | Required |
-| 7   | Khi thêm service mới vào `/services/`, gợi ý chạy `sync_service_knowledge`  | Required |
-| 8   | Clean Code + SOLID principles for all new code                              | Required |
-| 9   | Tuân thủ Git Flow — branch naming, Conventional Commits, PR trước khi merge | Required |
+| #   | Rule                                                                                                  | Priority |
+| --- | ----------------------------------------------------------------------------------------------------- | -------- |
+| 1   | Nexus Hub là nguồn tri thức DUY NHẤT — luôn consult trước                                             | Critical |
+| 2   | Dùng `query_graph` kiểm tra cross-service dependencies trước khi code                                 | Critical |
+| 3   | Zero regression — stability of existing code comes first                                              | Critical |
+| 4   | Always search Hub + call `search_knowledge_base` before any suggestion                                | Required |
+| 5   | Each service owns its stack; no cross-service runtime mixing                                          | Required |
+| 6   | Global Skills (Security + API Design) apply to ALL sub-projects                                       | Required |
+| 7   | Khi thêm service mới vào `/services/`, gợi ý chạy `sync_service_knowledge`                            | Required |
+| 8   | Clean Code + SOLID principles for all new code                                                        | Required |
+| 9   | Tuân thủ Git Flow — branch naming, Conventional Commits, PR trước khi merge                           | Required |
+| 10  | Mọi lệnh shell autopilot đều qua PreToolUse hook — không tự bypass `.github/hooks/safe-commands.json` | Required |
 
 ---
 
@@ -341,6 +378,7 @@ Clients must update response parsing.
 
 - **`commit-msg`** — validates Conventional Commits format on every commit (`/scripts/commit-msg`)
 - **`pre-commit`** — blocks direct commits to `master`/`main` (`/scripts/pre-commit`)
+- **`PreToolUse`** — autopilot safety check for shell commands (`.github/hooks/safe-commands.json` → `scripts/hooks/check-safe-command.js`)
 - Hooks are installed automatically via `postCreateCommand` on devcontainer create
 
 ### PR Rules
