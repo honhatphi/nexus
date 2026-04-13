@@ -175,6 +175,25 @@
       "group": "none",
       "problemMatcher": []
     },
+    // ── Services (managed by start-services.sh) ─────────────
+    {
+      "label": "🔄 Services: Restart All",
+      "type": "shell",
+      "command": "bash /workspace/scripts/start-services.sh",
+      "options": { "cwd": "${workspaceFolder:🏛️ Nexus Root}" },
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "⏹ Services: Stop All",
+      "type": "shell",
+      "command": "bash /workspace/scripts/stop-services.sh",
+      "options": { "cwd": "${workspaceFolder:🏛️ Nexus Root}" },
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
     // ── Test ──────────────────────────────────────────────────
     {
       "label": "🧪 Test: Integration Pipeline",

@@ -8,8 +8,8 @@
   // ── Post-create: install all dependencies ─────────────────
   "postCreateCommand": "npm --prefix /workspace/nexus-hub/common-tools install && npm --prefix /workspace/mcp-server install && npm --prefix /workspace/nexus-hub/common-tools run build && npm --prefix /workspace/mcp-server run build && bash /workspace/scripts/setup-git-hooks.sh",
 
-  // ── Post-start: start MCP server (runs on every container start) ──
-  "postStartCommand": "nohup node /workspace/mcp-server/dist/index.js > /tmp/mcp-server.log 2>&1 & sleep 1 && curl -sf http://localhost:3100/health > /dev/null && echo '✅ MCP Server started on port 3100' || echo '❌ MCP Server failed to start — check /tmp/mcp-server.log'",
+  // ── Post-start: start all background services (socat proxies + MCP server) ──
+  "postStartCommand": "bash /workspace/scripts/start-services.sh",
 
   // ── Port forwarding ───────────────────────────────────────
   "forwardPorts": [3100, 3000, 7687, 8000],
