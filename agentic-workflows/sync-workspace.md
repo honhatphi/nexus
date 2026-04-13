@@ -1,10 +1,10 @@
 # Sync Workspace — Agentic Workflow
 
-Quy trình tự động quét toàn bộ `/services`, trích xuất tri thức, nạp vào Shared Graph & Vector DB, rồi phân tích để tạo Global Skills.
+Automated workflow to scan all `/services`, extract knowledge, ingest into the Shared Graph & Vector DB, then analyze patterns to generate Global Skills.
 
 ---
 
-## Tổng quan
+## Overview
 
 ```
 Scan /services → Parse (tree-sitter) → Upsert Graph + Vector → Detect Patterns → Generate Global Skills
@@ -12,11 +12,11 @@ Scan /services → Parse (tree-sitter) → Upsert Graph + Vector → Detect Patt
 
 ---
 
-## Bước 1 — Quét toàn bộ dự án trong `/services`
+## Step 1 — Scan All Projects in `/services`
 
-- Liệt kê tất cả service directories trong `/services/*`.
-- Mỗi service đã được khai báo trong `/nexus-config.yaml` với tech stack tương ứng.
-- Thu thập metadata: tên service, ngôn ngữ, đường dẫn.
+- List all service directories in `/services/*`.
+- Each service is declared in `/nexus-config.yaml` with its corresponding tech stack.
+- Collect metadata: service name, language, path.
 
 ```
 Input:  /services/*
@@ -30,9 +30,9 @@ Output: [
 
 ---
 
-## Bước 2 — Gọi `universal-parser` trích xuất tri thức
+## Step 2 — Call `universal-parser` to Extract Knowledge
 
-Với mỗi service, sử dụng MCP Tool `sync_service_knowledge`:
+For each service, use the MCP Tool `sync_service_knowledge`:
 
 ```
 sync_service_knowledge({
@@ -41,13 +41,15 @@ sync_service_knowledge({
 })
 ```
 
-Tool sẽ tự động:
-1. Quét tất cả file mã nguồn (`.go`, `.py`, `.php`, `.ts`).
-2. Gọi `universal-parser.ts` cho từng file.
-3. Trích xuất: **Functions**, **Parameters**, **Return Types**, **Function Calls**.
-4. Chuẩn hóa thành Unified Schema JSON.
+The tool automatically:
 
-**Output mỗi service:**
+1. Scans all source code files (`.go`, `.py`, `.php`, `.ts`).
+2. Calls `universal-parser.ts` for each file.
+3. Extracts: **Functions**, **Parameters**, **Return Types**, **Function Calls**.
+4. Normalizes into Unified Schema JSON.
+
+**Output per service:**
+
 ```jsonc
 {
   "service": "api-gateway",
@@ -55,20 +57,20 @@ Tool sẽ tự động:
   "filesScanned": 42,
   "functionsExtracted": 156,
   "relationshipsCreated": 320,
-  "vectorsUpserted": 156
+  "vectorsUpserted": 156,
 }
 ```
 
 ---
 
-## Bước 3 — Nạp dữ liệu vào Shared Databases
+## Step 3 — Ingest Data into Shared Databases
 
 ### 3a. Memgraph (Shared Graph)
 
-Tạo/cập nhật nodes và relationships:
+Create/update nodes and relationships:
 
 ```cypher
-// Node cho mỗi hàm
+// Node for each function
 MERGE (f:Function {name: $name, file: $file, service: $service})
 SET f.language    = $language,
     f.returnType  = $returnType,
@@ -76,7 +78,7 @@ SET f.language    = $language,
     f.endLine     = $endLine,
     f.updatedAt   = timestamp()
 
-// Relationship cho mỗi function call
+// Relationship for each function call
 MERGE (caller:Function {name: $callerName, file: $callerFile})
 MERGE (callee:Function {name: $calleeName})
 MERGE (caller)-[:CALLS {line: $line}]->(callee)
@@ -90,7 +92,7 @@ MERGE (f)-[:DEFINED_IN]->(fi)
 
 ### 3b. ChromaDB (Shared Vector)
 
-Nạp mỗi function signature + body context làm vector document:
+Ingest each function signature + body context as a vector document:
 
 ```
 ID:       "{service}::{file}::{functionName}"
@@ -100,14 +102,14 @@ Metadata: { service, file, language, startLine, endLine }
 
 ---
 
-## Bước 4 — Phân tích Pattern chung giữa các Microservices
+## Step 4 — Analyze Common Patterns Across Microservices
 
-Sau khi nạp xong tất cả services, Agent thực hiện phân tích cross-service:
+After all services have been ingested, the agent performs cross-service analysis:
 
-### 4a. Truy vấn Graph để tìm pattern
+### 4a. Query Graph to Find Patterns
 
 ```cypher
-// Tìm các hàm có tên giống nhau xuất hiện trong nhiều service
+// Find functions with the same name appearing in multiple services
 MATCH (f:Function)
 WITH f.name AS funcName, collect(DISTINCT f.service) AS services, count(*) AS cnt
 WHERE cnt > 1
@@ -115,12 +117,12 @@ RETURN funcName, services, cnt
 ORDER BY cnt DESC
 LIMIT 20
 
-// Tìm pattern gọi API chéo service
+// Find cross-service API call patterns
 MATCH (caller:Function)-[:CALLS]->(callee:Function)
 WHERE caller.service <> callee.service
 RETURN caller.service, caller.name, callee.service, callee.name
 
-// Tìm pattern xử lý lỗi chung
+// Find common error handling patterns
 MATCH (f:Function)-[:CALLS]->(handler:Function)
 WHERE handler.name CONTAINS 'error' OR handler.name CONTAINS 'Error'
    OR handler.name CONTAINS 'handle' OR handler.name CONTAINS 'catch'
@@ -128,7 +130,7 @@ RETURN f.service, f.name, handler.name, count(*) AS frequency
 ORDER BY frequency DESC
 ```
 
-### 4b. Truy vấn Vector để tìm code tương đồng
+### 4b. Query Vectors to Find Similar Code
 
 ```
 search_knowledge_base({ query: "error handling middleware", topK: 10 })
@@ -138,38 +140,39 @@ search_knowledge_base({ query: "authentication token validation", topK: 10 })
 
 ---
 
-## Bước 5 — Tạo Global Skills trong `/nexus-hub/skills`
+## Step 5 — Generate Global Skills in `/nexus-hub/skills`
 
-Dựa trên kết quả phân tích, Agent tự động tạo các Global Skill files:
+Based on the analysis results, the agent creates Global Skill files:
 
 ```
 nexus-hub/skills/
-├── error-handling.md          ← Pattern xử lý lỗi chung
-├── inter-service-calls.md     ← Cách gọi API giữa các service
-├── auth-middleware.md          ← Pattern auth middleware
+├── error-handling.md          ← Common error handling pattern
+├── inter-service-calls.md     ← Cross-service API call conventions
+├── auth-middleware.md          ← Auth middleware pattern
 ├── retry-logic.md              ← Retry & circuit breaker pattern
-└── logging-standards.md        ← Logging format chuẩn
+└── logging-standards.md        ← Standard logging format
 ```
 
-Mỗi skill file chứa:
-- **Mô tả pattern** — Tóm tắt pattern tìm thấy.
-- **Services áp dụng** — Danh sách services nào đang dùng pattern này.
-- **Code mẫu chuẩn** — Ví dụ code reference từ service tốt nhất.
-- **Anti-patterns** — Các cách triển khai sai phát hiện khi so sánh.
-- **Recommendations** — Gợi ý cải thiện cho các service chưa tuân thủ.
+Each skill file contains:
+
+- **Pattern description** — Summary of the discovered pattern.
+- **Applicable services** — List of services currently using this pattern.
+- **Reference code** — Best-practice code examples from the strongest service.
+- **Anti-patterns** — Incorrect implementations found during comparison.
+- **Recommendations** — Improvement suggestions for non-compliant services.
 
 ---
 
-## Sơ đồ luồng
+## Flow Diagram
 
 ```
 ┌──────────────────────────────┐
-│  1. Liệt kê /services/*     │
-│     Đọc nexus-config.yaml   │
+│  1. List /services/*         │
+│     Read nexus-config.yaml   │
 └──────────────┬───────────────┘
                ▼
        ┌───────┴───────┐
-       │  Với mỗi      │
+       │  For each      │
        │  service:      │
        └───────┬───────┘
                ▼
@@ -185,8 +188,8 @@ Mỗi skill file chứa:
 └──────────────┬───────────────┘
                ▼
        ┌───────┴───────┐
-       │ Tất cả        │
-       │ services done? │
+       │  All           │
+       │  services done? │
        └───────┬───────┘
           Yes  ▼
 ┌──────────────────────────────┐
@@ -203,10 +206,10 @@ Mỗi skill file chứa:
 
 ---
 
-## Lịch chạy
+## Schedule
 
-| Trigger | Hành động |
-|---------|-----------|
-| **Manual** | Agent gọi khi người dùng yêu cầu sync |
-| **On Push** | Hook `post-push` chạy `sync_service_knowledge` cho service vừa thay đổi |
-| **Scheduled** | Cron job chạy full sync hàng ngày, phân tích patterns hàng tuần |
+| Trigger       | Action                                                                 |
+| ------------- | ---------------------------------------------------------------------- |
+| **Manual**    | Agent runs when user requests sync                                     |
+| **On Push**   | Hook `post-push` runs `sync_service_knowledge` for the changed service |
+| **Scheduled** | Cron job runs full sync daily, pattern analysis weekly                 |

@@ -1,10 +1,10 @@
 # Maintain Hub — Agentic Workflow
 
-Quy trình tự động khi phát hiện thay đổi trong `/services/*`, đảm bảo **Nexus Hub luôn đồng bộ** với knowledge mới nhất từ các spoke service.
+Automated workflow triggered when changes are detected in `/services/*`, ensuring the **Nexus Hub stays in sync** with the latest knowledge from spoke services.
 
 ---
 
-## Tổng quan
+## Overview
 
 ```
 Detect Change → Validate Service → sync_service_knowledge → Verify Graph → Notify
@@ -12,38 +12,38 @@ Detect Change → Validate Service → sync_service_knowledge → Verify Graph �
 
 ---
 
-## Trigger — Khi nào workflow này kích hoạt?
+## Trigger — When does this workflow activate?
 
-Agent **phải tự động gợi ý** chạy workflow này khi phát hiện một trong các sự kiện sau:
+The agent **must automatically suggest** running this workflow when any of the following events are detected:
 
-1. **Folder mới** được thêm vào `/services/` (new microservice).
-2. **File source code mới** được tạo hoặc sửa đổi đáng kể trong một service đã có.
-3. **Người dùng yêu cầu** đồng bộ kiến thức thủ công.
-4. **Trước khi code tính năng mới** — nếu lần sync gần nhất đã quá cũ (agent nên hỏi).
+1. **New folder** added to `/services/` (new microservice).
+2. **New source code file** created or significantly modified in an existing service.
+3. **User explicitly requests** a manual knowledge sync.
+4. **Before implementing a new feature** — if the last sync is stale (agent should ask).
 
-### Phát hiện folder mới
+### Detecting a new folder
 
-Khi Agent quan sát thấy thư mục mới trong `/services/`:
+When the agent observes a new directory in `/services/`:
 
 ```
-# Ví dụ: người dùng vừa tạo /services/inventory-service/
-Agent PHẢI thông báo:
-  "Phát hiện service mới: inventory-service.
-   Bạn có muốn chạy sync_service_knowledge để nạp toàn bộ
-   hàm và quan hệ vào Knowledge Base không?"
+# Example: user just created /services/inventory-service/
+Agent MUST notify:
+  "Detected new service: inventory-service.
+   Would you like to run sync_service_knowledge to ingest
+   all functions and relationships into the Knowledge Base?"
 ```
 
-> **Không tự động chạy sync** mà không hỏi người dùng trước — đây là hành động ảnh hưởng đến shared KB.
+> **Do not auto-run sync** without user confirmation — this action affects the shared KB.
 
 ---
 
-## Bước 1 — Validate Service Directory
+## Step 1 — Validate Service Directory
 
-Trước khi chạy sync, kiểm tra service folder hợp lệ:
+Before running sync, verify the service folder is valid:
 
-- [ ] Folder tồn tại và chứa source code (`.go`, `.py`, `.php`, `.ts`, `.tsx`).
-- [ ] Folder không nằm trong danh sách bỏ qua (`node_modules`, `.git`, `vendor`, `dist`, ...).
-- [ ] Tuyệt đối **không** sync `/src/legacy/` — chỉ sync `/services/*`.
+- [ ] Folder exists and contains source code (`.go`, `.py`, `.php`, `.ts`, `.tsx`).
+- [ ] Folder is not in the ignore list (`node_modules`, `.git`, `vendor`, `dist`, ...).
+- [ ] Absolutely **never** sync `/src/legacy/` — only sync `/services/*`.
 
 ```
 # ❌ FORBIDDEN
@@ -53,51 +53,52 @@ sync_service_knowledge({ service_path: "/src/legacy" })
 sync_service_knowledge({ service_path: "./services/inventory-service" })
 ```
 
-**Output:** Xác nhận service hợp lệ hoặc thông báo lỗi.
+**Output:** Confirmation that the service is valid, or an error message.
 
 ---
 
-## Bước 2 — Chạy `sync_service_knowledge`
+## Step 2 — Run `sync_service_knowledge`
 
-Gọi tool với đường dẫn service:
+Call the tool with the service path:
 
 ```
 sync_service_knowledge({
   service_path: "./services/inventory-service",
-  force_update: false   // true nếu muốn re-sync toàn bộ
+  force_update: false   // true to re-sync everything
 })
 ```
 
-Tool sẽ tự động:
-1. Quét toàn bộ file source code trong folder.
-2. Parse bằng `CodeParser` (tree-sitter WASM) — extract symbols, params, docstrings, calls.
-3. Upsert vào **Memgraph**:
-   - Nodes: `Service`, `File`, `Function` (với `kind`, `signature`, `docstring`).
-   - Edges: `Service → CONTAINS → File → CONTAINS → Function`, `Function → CALLS → Function`.
-4. Upsert vào **ChromaDB**: Embedding signature + docstring + metadata cho mỗi symbol.
+The tool automatically:
 
-**Output:** `SyncReport` — số hàm nạp, số quan hệ mới, trạng thái thành công.
+1. Scans all source code files in the folder.
+2. Parses with `CodeParser` (tree-sitter WASM) — extracts symbols, params, docstrings, calls.
+3. Upserts to **Memgraph**:
+   - Nodes: `Service`, `File`, `Function` (with `kind`, `signature`, `docstring`).
+   - Edges: `Service → CONTAINS → File → CONTAINS → Function`, `Function → CALLS → Function`.
+4. Upserts to **ChromaDB**: Embedding signature + docstring + metadata for each symbol.
+
+**Output:** `SyncReport` — number of functions ingested, new relationships, success status.
 
 ---
 
-## Bước 3 — Verify Graph Integrity
+## Step 3 — Verify Graph Integrity
 
-Sau khi sync xong, Agent nên chạy kiểm tra nhanh:
+After sync completes, the agent should run a quick validation:
 
 ```
-# Kiểm tra service node đã tồn tại trong graph
+# Check that the service node exists in the graph
 query_graph({ query: "MATCH (s:Service {name: 'inventory-service'}) RETURN s" })
 
-# Kiểm tra số lượng function đã nạp
+# Check the number of functions ingested
 query_graph({
   query: "MATCH (s:Service {name: $name})-[:CONTAINS]->(:File)-[:CONTAINS]->(f:Function) RETURN count(f) AS total",
   params: { name: "inventory-service" }
 })
 ```
 
-Nếu kết quả bất thường (0 function, missing edges), cảnh báo người dùng và gợi ý chạy lại với `force_update: true`.
+If results are abnormal (0 functions, missing edges), warn the user and suggest re-running with `force_update: true`.
 
-**Output:** Báo cáo xác nhận graph đã cập nhật đúng.
+**Output:** Confirmation report that the graph has been updated correctly.
 
 ---
 
@@ -110,7 +111,7 @@ services:
   # ... existing services ...
   inventory-service:
     path: ./services/inventory-service
-    language: go          # or python, php, typescript
+    language: go # or python, php, typescript
     port: 8084
     description: "Inventory management — stock tracking, warehouse ops"
 ```
@@ -139,10 +140,10 @@ Agent trả về tóm tắt cuối cùng cho người dùng:
 
 ## Quy tắc quan trọng
 
-| # | Quy tắc | Mức độ |
-|---|---------|--------|
-| 1 | Luôn **hỏi trước** khi chạy sync — không tự động thay đổi shared KB | Critical |
-| 2 | Chỉ sync từ `/services/*` — không sync `/src/legacy/` | Critical |
-| 3 | Sau mỗi sync, chạy verify graph để đảm bảo dữ liệu chính xác | Required |
-| 4 | Gợi ý cập nhật `nexus-config.yaml` nếu service mới | Required |
-| 5 | Nếu sync thất bại, báo chi tiết lỗi — không retry im lặng | Required |
+| #   | Quy tắc                                                             | Mức độ   |
+| --- | ------------------------------------------------------------------- | -------- |
+| 1   | Luôn **hỏi trước** khi chạy sync — không tự động thay đổi shared KB | Critical |
+| 2   | Chỉ sync từ `/services/*` — không sync `/src/legacy/`               | Critical |
+| 3   | Sau mỗi sync, chạy verify graph để đảm bảo dữ liệu chính xác        | Required |
+| 4   | Gợi ý cập nhật `nexus-config.yaml` nếu service mới                  | Required |
+| 5   | Nếu sync thất bại, báo chi tiết lỗi — không retry im lặng           | Required |
