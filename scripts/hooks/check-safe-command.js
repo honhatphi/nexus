@@ -45,10 +45,21 @@ const DENY_PATTERNS = [
  * ASK — require explicit user confirmation before proceeding.
  */
 const ASK_PATTERNS = [
-  // Recursive delete (any path)
-  { re: /\brm\s+(-[^\s]*[rf]){1,2}/i, label: "rm with -r or -f flags" },
+  // Docker destructive operations (check BEFORE generic rm)
+  {
+    re: /\bdocker\s+(rm|rmi|system\s+prune|volume\s+rm)/i,
+    label: "docker destructive operation",
+  },
+  // ANY file deletion — always confirm (negative lookbehind excludes docker rm)
+  { re: /(?<!\bdocker\s)\brm\s+/i, label: "file deletion (rm)" },
+  // Move to /dev/null
   // Git destructive operations
   { re: /\bgit\s+reset\s+--hard\b/i, label: "git reset --hard" },
+  { re: /\bgit\s+reset\b/i, label: "git reset (may lose changes)" },
+  {
+    re: /\bgit\s+stash\s+drop\b/i,
+    label: "git stash drop (loses stashed changes)",
+  },
   {
     re: /\bgit\s+clean\s+(-[^\s]*[fd])/i,
     label: "git clean -fd (removes untracked files)",
@@ -83,6 +94,10 @@ const ASK_PATTERNS = [
     re: /\bgit\s+push\s+origin\s+--delete\b/i,
     label: "git push --delete (remote branch delete)",
   },
+  // npm/package destructive
+  { re: /\bnpm\s+(unpublish|deprecate)\b/i, label: "npm unpublish/deprecate" },
+  // Overwrite files unsafely
+  { re: /\b>\s*\/[^\s]+/i, label: "redirect overwrite to absolute path" },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
