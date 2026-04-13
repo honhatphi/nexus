@@ -3,8 +3,19 @@ import { z } from "zod";
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
-import { parseSource, detectLanguage, EXTENSION_MAP } from "@nexus-hub/common-tools";
-import type { ParseResult, FunctionInfo, InfraPattern, ClassInfo } from "@nexus-hub/common-tools";
+import {
+  parseSource,
+  detectLanguage,
+  EXTENSION_MAP,
+} from "@nexus-hub/common-tools";
+import type {
+  ParseResult,
+  FunctionInfo,
+  InfraPattern,
+  ClassInfo,
+  DagInfo,
+  DagTaskInfo,
+} from "@nexus-hub/common-tools";
 import { MemgraphClient } from "../clients/memgraph.js";
 import { ChromaDBClient } from "../clients/chromadb.js";
 
@@ -20,8 +31,18 @@ async function collectSourceFiles(dir: string): Promise<string[]> {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       // Skip common non-source dirs
-      if (["node_modules", ".git", "vendor", "dist", "__pycache__", ".venv"].includes(entry.name)) continue;
-      files.push(...await collectSourceFiles(fullPath));
+      if (
+        [
+          "node_modules",
+          ".git",
+          "vendor",
+          "dist",
+          "__pycache__",
+          ".venv",
+        ].includes(entry.name)
+      )
+        continue;
+      files.push(...(await collectSourceFiles(fullPath)));
     } else if (entry.isFile()) {
       const ext = path.extname(entry.name).toLowerCase();
       if (SOURCE_EXTENSIONS.has(ext)) {
@@ -49,22 +70,25 @@ function buildFunctionSignature(fn: FunctionInfo): string {
 async function upsertToGraph(
   memgraph: MemgraphClient,
   serviceName: string,
-  parseResult: ParseResult
+  parseResult: ParseResult,
 ): Promise<{ nodesUpserted: number; relsCreated: number }> {
   let nodesUpserted = 0;
   let relsCreated = 0;
 
   // Ensure service & file nodes
-  await memgraph.write(
-    `MERGE (s:Service {name: $service})`,
-    { service: serviceName }
-  );
+  await memgraph.write(`MERGE (s:Service {name: $service})`, {
+    service: serviceName,
+  });
   await memgraph.write(
     `MERGE (fi:File {path: $file})
      MERGE (s:Service {name: $service})
      MERGE (fi)-[:BELONGS_TO]->(s)
      SET fi.language = $language, fi.updatedAt = timestamp()`,
-    { file: parseResult.file, service: serviceName, language: parseResult.language }
+    {
+      file: parseResult.file,
+      service: serviceName,
+      language: parseResult.language,
+    },
   );
 
   for (const fn of parseResult.functions) {
@@ -89,7 +113,7 @@ async function upsertToGraph(
         startLine: fn.startLine,
         endLine: fn.endLine,
         signature: buildFunctionSignature(fn),
-      }
+      },
     );
     nodesUpserted++;
 
@@ -106,7 +130,7 @@ async function upsertToGraph(
           service: serviceName,
           calleeName: call.name,
           line: call.line,
-        }
+        },
       );
       relsCreated++;
     }
@@ -120,7 +144,7 @@ async function upsertToGraph(
 async function upsertInfraToGraph(
   memgraph: MemgraphClient,
   serviceName: string,
-  parseResult: ParseResult
+  parseResult: ParseResult,
 ): Promise<{ infraNodes: number; infraRels: number }> {
   let infraNodes = 0;
   let infraRels = 0;
@@ -141,7 +165,7 @@ async function upsertInfraToGraph(
         startLine: cls.startLine,
         endLine: cls.endLine,
         docstring: cls.docstring ?? "",
-      }
+      },
     );
     infraNodes++;
 
@@ -152,7 +176,12 @@ async function upsertInfraToGraph(
          MERGE (parent:Class {name: $baseName})
          MERGE (child)-[r:INHERITS]->(parent)
          SET r.updatedAt = timestamp()`,
-        { childName: cls.name, file: parseResult.file, service: serviceName, baseName: base }
+        {
+          childName: cls.name,
+          file: parseResult.file,
+          service: serviceName,
+          baseName: base,
+        },
       );
       infraRels++;
     }
@@ -164,7 +193,12 @@ async function upsertInfraToGraph(
          MERGE (c:Class {name: $className, file: $file, service: $service})
          MERGE (f)-[r:METHOD_OF]->(c)
          SET r.updatedAt = timestamp()`,
-        { methodName: method, file: parseResult.file, service: serviceName, className: cls.name }
+        {
+          methodName: method,
+          file: parseResult.file,
+          service: serviceName,
+          className: cls.name,
+        },
       );
       infraRels++;
     }
@@ -205,7 +239,7 @@ async function upsertInfraToGraph(
 
     // Find the function that contains this infra call (by line range)
     const ownerFn = parseResult.functions.find(
-      (fn) => fn.startLine <= ip.line && ip.line <= fn.endLine
+      (fn) => fn.startLine <= ip.line && ip.line <= fn.endLine,
     );
 
     // Create the infrastructure target node
@@ -213,7 +247,7 @@ async function upsertInfraToGraph(
     await memgraph.write(
       `MERGE (t:${label} {name: $target})
        SET t.type = $dbType, t.updatedAt = timestamp()`,
-      { target: ip.target, dbType }
+      { target: ip.target, dbType },
     );
     infraNodes++;
 
@@ -234,7 +268,7 @@ async function upsertInfraToGraph(
           line: ip.line,
           detail: ip.detail,
           metadata: metaStr,
-        }
+        },
       );
       infraRels++;
     } else {
@@ -244,7 +278,12 @@ async function upsertInfraToGraph(
          MATCH (t:${label} {name: $target})
          MERGE (fi)-[r:${edge}]->(t)
          SET r.line = $line, r.detail = $detail, r.updatedAt = timestamp()`,
-        { file: parseResult.file, target: ip.target, line: ip.line, detail: ip.detail }
+        {
+          file: parseResult.file,
+          target: ip.target,
+          line: ip.line,
+          detail: ip.detail,
+        },
       );
       infraRels++;
     }
@@ -258,7 +297,7 @@ async function upsertInfraToGraph(
 async function upsertToVector(
   chromadb: ChromaDBClient,
   serviceName: string,
-  parseResult: ParseResult
+  parseResult: ParseResult,
 ): Promise<number> {
   const ids: string[] = [];
   const documents: string[] = [];
@@ -268,7 +307,7 @@ async function upsertToVector(
   const fnInfraMap = new Map<string, string[]>();
   for (const ip of parseResult.infraPatterns) {
     const ownerFn = parseResult.functions.find(
-      (fn) => fn.startLine <= ip.line && ip.line <= fn.endLine
+      (fn) => fn.startLine <= ip.line && ip.line <= fn.endLine,
     );
     if (ownerFn) {
       const list = fnInfraMap.get(ownerFn.name) ?? [];
@@ -337,6 +376,215 @@ async function upsertToVector(
   return ids.length;
 }
 
+// ── DAG Graph Upsert ─────────────────────────────────────────
+
+async function upsertDagsToGraph(
+  memgraph: MemgraphClient,
+  serviceName: string,
+  parseResult: ParseResult,
+): Promise<{ nodesUpserted: number; relsCreated: number }> {
+  let nodesUpserted = 0;
+  let relsCreated = 0;
+
+  for (const dag of parseResult.dags) {
+    // DAG node
+    await memgraph.write(
+      `MERGE (d:DAG {name: $dagName, service: $service})
+       SET d.file            = $file,
+           d.scheduleInterval = $schedule,
+           d.description     = $description,
+           d.owner           = $owner,
+           d.concurrency     = $concurrency,
+           d.updatedAt       = timestamp()
+       WITH d
+       MERGE (s:Service {name: $service})
+       MERGE (s)-[:CONTAINS]->(d)`,
+      {
+        dagName: dag.name,
+        service: serviceName,
+        file: parseResult.file,
+        schedule: dag.scheduleInterval ?? "",
+        description: dag.description ?? "",
+        owner: dag.owner ?? "",
+        concurrency: dag.concurrency ?? 0,
+      },
+    );
+    nodesUpserted++;
+
+    // File node
+    await memgraph.write(
+      `MERGE (fi:File {path: $file})
+       MERGE (s:Service {name: $service})
+       MERGE (fi)-[:BELONGS_TO]->(s)
+       SET fi.language = $language, fi.updatedAt = timestamp()`,
+      {
+        file: parseResult.file,
+        service: serviceName,
+        language: parseResult.language,
+      },
+    );
+
+    for (const task of dag.tasks) {
+      // Task node + BELONGS_TO DAG
+      await memgraph.write(
+        `MERGE (t:Task {name: $taskName, dag: $dagName, service: $service})
+         SET t.operator              = $operator,
+             t.pythonCallableFile    = $pyFile,
+             t.pythonCallableName    = $pyName,
+             t.bashCommand           = $bashCmd,
+             t.sql                   = $sql,
+             t.postgresConnId        = $pgConnId,
+             t.retries               = $retries,
+             t.executionTimeoutSecs  = $timeout,
+             t.file                  = $file,
+             t.updatedAt             = timestamp()
+         WITH t
+         MERGE (d:DAG {name: $dagName, service: $service})
+         MERGE (t)-[:BELONGS_TO]->(d)`,
+        {
+          taskName: task.name,
+          dagName: dag.name,
+          service: serviceName,
+          operator: task.operator,
+          pyFile: task.pythonCallableFile ?? "",
+          pyName: task.pythonCallableName ?? "",
+          bashCmd: task.bashCommand ?? "",
+          sql: task.sql ?? "",
+          pgConnId: task.postgresConnId ?? "",
+          retries: task.retries ?? 0,
+          timeout: task.executionTimeoutSecs ?? 0,
+          file: parseResult.file,
+        },
+      );
+      nodesUpserted++;
+
+      // DEPENDS_ON edges (task → upstream task)
+      for (const dep of task.dependencies) {
+        await memgraph.write(
+          `MERGE (t:Task {name: $taskName, dag: $dagName, service: $service})
+           MERGE (upstream:Task {name: $depName, dag: $dagName, service: $service})
+           MERGE (t)-[r:DEPENDS_ON]->(upstream)
+           SET r.updatedAt = timestamp()`,
+          {
+            taskName: task.name,
+            dagName: dag.name,
+            service: serviceName,
+            depName: dep,
+          },
+        );
+        relsCreated++;
+      }
+
+      // INVOKES edge: PythonOperator task → Python function
+      if (task.pythonCallableName) {
+        await memgraph.write(
+          `MERGE (t:Task {name: $taskName, dag: $dagName, service: $service})
+           MERGE (f:Function {name: $funcName})
+           MERGE (t)-[r:INVOKES]->(f)
+           SET r.callableFile = $pyFile, r.updatedAt = timestamp()`,
+          {
+            taskName: task.name,
+            dagName: dag.name,
+            service: serviceName,
+            funcName: task.pythonCallableName,
+            pyFile: task.pythonCallableFile ?? "",
+          },
+        );
+        relsCreated++;
+      }
+    }
+  }
+
+  return { nodesUpserted, relsCreated };
+}
+
+// ── DAG Vector Upsert ────────────────────────────────────────
+
+async function upsertDagsToVector(
+  chromadb: ChromaDBClient,
+  serviceName: string,
+  parseResult: ParseResult,
+): Promise<number> {
+  if (parseResult.dags.length === 0) return 0;
+
+  const ids: string[] = [];
+  const documents: string[] = [];
+  const metadatas: Record<string, string | number | boolean>[] = [];
+
+  for (const dag of parseResult.dags) {
+    // Vector for the DAG itself
+    const dagId = `${serviceName}::${parseResult.file}::dag::${dag.name}`;
+    const taskList = dag.tasks.map((t) => t.name).join(", ");
+    const dagDoc = [
+      `[yaml] DAG: ${dag.name}`,
+      `File: ${parseResult.file}`,
+      dag.description ? `Description: ${dag.description}` : "",
+      dag.scheduleInterval ? `Schedule: ${dag.scheduleInterval}` : "",
+      `Tasks: ${taskList}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    ids.push(dagId);
+    documents.push(dagDoc);
+    metadatas.push({
+      service: serviceName,
+      file: parseResult.file,
+      language: "yaml",
+      functionName: dag.name,
+      kind: "dag",
+      startLine: 0,
+      endLine: 0,
+    });
+
+    // Vector for each task
+    for (const task of dag.tasks) {
+      const taskId = `${serviceName}::${parseResult.file}::task::${task.name}`;
+      const deps =
+        task.dependencies.length > 0
+          ? `Dependencies: ${task.dependencies.join(", ")}`
+          : "";
+      const operatorShort = task.operator.split(".").pop() ?? task.operator;
+
+      const taskDoc = [
+        `[yaml] Task: ${task.name} (${operatorShort})`,
+        `DAG: ${dag.name}`,
+        `File: ${parseResult.file}`,
+        `Operator: ${task.operator}`,
+        task.pythonCallableName ? `Calls: ${task.pythonCallableName}` : "",
+        task.pythonCallableFile
+          ? `Callable file: ${task.pythonCallableFile}`
+          : "",
+        task.bashCommand ? `Bash command: ${task.bashCommand}` : "",
+        task.sql ? `SQL: ${task.sql}` : "",
+        task.postgresConnId
+          ? `Postgres connection: ${task.postgresConnId}`
+          : "",
+        deps,
+        task.opKwargs ? `Op kwargs: ${JSON.stringify(task.opKwargs)}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      ids.push(taskId);
+      documents.push(taskDoc);
+      metadatas.push({
+        service: serviceName,
+        file: parseResult.file,
+        language: "yaml",
+        functionName: task.name,
+        kind: "task",
+        startLine: 0,
+        endLine: 0,
+        hasInfra: !!(task.postgresConnId || task.bashCommand),
+      });
+    }
+  }
+
+  await chromadb.upsert(ids, documents, metadatas);
+  return ids.length;
+}
+
 // ── Staleness Check ──────────────────────────────────────────
 
 const hashCache = new Map<string, string>();
@@ -353,7 +601,7 @@ function isFileChanged(filePath: string, content: string): boolean {
 export function registerSyncTool(
   server: McpServer,
   memgraph: MemgraphClient,
-  chromadb: ChromaDBClient
+  chromadb: ChromaDBClient,
 ): void {
   server.tool(
     "sync_service_knowledge",
@@ -361,11 +609,15 @@ export function registerSyncTool(
     {
       service_path: z
         .string()
-        .describe("Absolute or workspace-relative path to the service folder (e.g. './services/api-gateway')."),
+        .describe(
+          "Absolute or workspace-relative path to the service folder (e.g. './services/api-gateway').",
+        ),
       force_update: z
         .boolean()
         .default(false)
-        .describe("If true, re-process all files regardless of whether they changed. If false, skip unchanged files."),
+        .describe(
+          "If true, re-process all files regardless of whether they changed. If false, skip unchanged files.",
+        ),
     },
     async ({ service_path, force_update }) => {
       try {
@@ -377,10 +629,14 @@ export function registerSyncTool(
         const stat = await fs.stat(absPath);
         if (!stat.isDirectory()) {
           return {
-            content: [{
-              type: "text" as const,
-              text: JSON.stringify({ error: `${absPath} is not a directory.` }),
-            }],
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error: `${absPath} is not a directory.`,
+                }),
+              },
+            ],
             isError: true,
           };
         }
@@ -397,6 +653,9 @@ export function registerSyncTool(
         let totalClasses = 0;
         let totalInfraPatterns = 0;
         let totalInfraRels = 0;
+        let totalDagNodes = 0;
+        let totalDagRels = 0;
+        let totalDagVectors = 0;
         const languagesSeen = new Set<string>();
         const errors: string[] = [];
 
@@ -420,30 +679,66 @@ export function registerSyncTool(
             filesScanned++;
 
             if (parseResult.parseErrors.length > 0) {
-              errors.push(...parseResult.parseErrors.map((e) => `${relPath}: ${e}`));
+              errors.push(
+                ...parseResult.parseErrors.map((e) => `${relPath}: ${e}`),
+              );
+            }
+
+            // Upsert DAGs to Graph + Vector (YAML files)
+            if (parseResult.dags.length > 0) {
+              const dagGraphResult = await upsertDagsToGraph(
+                memgraph,
+                serviceName,
+                parseResult,
+              );
+              totalDagNodes += dagGraphResult.nodesUpserted;
+              totalDagRels += dagGraphResult.relsCreated;
+
+              const dagVectorCount = await upsertDagsToVector(
+                chromadb,
+                serviceName,
+                parseResult,
+              );
+              totalDagVectors += dagVectorCount;
             }
 
             // Upsert functions to Graph (even if 0 functions, still create file node)
             if (parseResult.functions.length > 0) {
-              const graphResult = await upsertToGraph(memgraph, serviceName, parseResult);
+              const graphResult = await upsertToGraph(
+                memgraph,
+                serviceName,
+                parseResult,
+              );
               totalFunctions += graphResult.nodesUpserted;
               totalRelationships += graphResult.relsCreated;
             }
 
             // Upsert infrastructure patterns + classes to Graph
-            if (parseResult.classes.length > 0 || parseResult.infraPatterns.length > 0) {
-              const infraResult = await upsertInfraToGraph(memgraph, serviceName, parseResult);
+            if (
+              parseResult.classes.length > 0 ||
+              parseResult.infraPatterns.length > 0
+            ) {
+              const infraResult = await upsertInfraToGraph(
+                memgraph,
+                serviceName,
+                parseResult,
+              );
               totalClasses += parseResult.classes.length;
               totalInfraPatterns += parseResult.infraPatterns.length;
               totalInfraRels += infraResult.infraRels;
             }
 
             // Upsert to Vector (functions + classes)
-            const vectorCount = await upsertToVector(chromadb, serviceName, parseResult);
+            const vectorCount = await upsertToVector(
+              chromadb,
+              serviceName,
+              parseResult,
+            );
             totalVectors += vectorCount;
           } catch (fileErr) {
             const relPath = path.relative(absPath, filePath);
-            const msg = fileErr instanceof Error ? fileErr.message : String(fileErr);
+            const msg =
+              fileErr instanceof Error ? fileErr.message : String(fileErr);
             errors.push(`${relPath}: ${msg}`);
             console.error(`[sync] Error processing ${relPath}:`, msg);
           }
@@ -452,7 +747,7 @@ export function registerSyncTool(
         const report = {
           service: serviceName,
           path: absPath,
-          summary: `Synced ${totalFunctions} functions, ${totalClasses} classes, ${totalRelationships} call edges, ${totalInfraPatterns} infra patterns (${totalInfraRels} infra edges). Languages: ${[...languagesSeen].join(", ") || "none"}`,
+          summary: `Synced ${totalFunctions} functions, ${totalClasses} classes, ${totalRelationships} call edges, ${totalInfraPatterns} infra patterns (${totalInfraRels} infra edges), ${totalDagNodes} DAG/task nodes (${totalDagRels} DAG edges). Languages: ${[...languagesSeen].join(", ") || "none"}`,
           details: {
             filesScanned,
             filesSkipped,
@@ -461,6 +756,9 @@ export function registerSyncTool(
             totalRelationships,
             totalInfraPatterns,
             totalInfraRels,
+            totalDagNodes,
+            totalDagRels,
+            totalDagVectors,
             totalVectors,
             languages: [...languagesSeen],
             forceUpdate: force_update,
@@ -469,23 +767,27 @@ export function registerSyncTool(
         };
 
         return {
-          content: [{
-            type: "text" as const,
-            text: JSON.stringify(report, null, 2),
-          }],
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(report, null, 2),
+            },
+          ],
         };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         const stack = err instanceof Error ? err.stack : undefined;
         console.error("[sync_service_knowledge] Error:", message, stack);
         return {
-          content: [{
-            type: "text" as const,
-            text: JSON.stringify({ error: message, stack }),
-          }],
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: message, stack }),
+            },
+          ],
           isError: true,
         };
       }
-    }
+    },
   );
 }

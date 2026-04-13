@@ -17,7 +17,7 @@ import { ChromaClient, type Collection, type Metadata } from "chromadb";
 
 import { CodeParser } from "./universal-parser.js";
 import { EXTENSION_MAP } from "./types.js";
-import type { ParseResult, SymbolInfo } from "./types.js";
+import type { ParseResult, SymbolInfo, DagInfo, DagTaskInfo } from "./types.js";
 
 // ─────────────────────────────────────────────────────────────
 // Configuration
@@ -61,7 +61,13 @@ export interface SyncReport {
 // ─────────────────────────────────────────────────────────────
 
 const SKIP_DIRS = new Set([
-  "node_modules", ".git", "vendor", "dist", "__pycache__", ".venv", "build",
+  "node_modules",
+  ".git",
+  "vendor",
+  "dist",
+  "__pycache__",
+  ".venv",
+  "build",
 ]);
 const SOURCE_EXTENSIONS = new Set(Object.keys(EXTENSION_MAP));
 
@@ -73,7 +79,7 @@ async function collectSourceFiles(dir: string): Promise<string[]> {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       if (SKIP_DIRS.has(entry.name)) continue;
-      files.push(...await collectSourceFiles(fullPath));
+      files.push(...(await collectSourceFiles(fullPath)));
     } else if (entry.isFile()) {
       const ext = path.extname(entry.name).toLowerCase();
       if (SOURCE_EXTENSIONS.has(ext)) {
@@ -122,7 +128,10 @@ export class SyncServiceKnowledge {
     this.chromaClient = new ChromaClient({
       ssl: chromaUrl.protocol === "https:",
       host: chromaUrl.hostname,
-      port: parseInt(chromaUrl.port || (chromaUrl.protocol === "https:" ? "443" : "8000"), 10),
+      port: parseInt(
+        chromaUrl.port || (chromaUrl.protocol === "https:" ? "443" : "8000"),
+        10,
+      ),
       ...(config.chromadb.token ? { authToken: config.chromadb.token } : {}),
     });
     this.collectionName = config.chromadb.collection ?? "nexus_code";
@@ -140,12 +149,20 @@ export class SyncServiceKnowledge {
     // Validate
     const stat = await fs.stat(absPath);
     if (!stat.isDirectory()) {
-      return this.errorReport(serviceName, absPath, `${absPath} is not a directory.`);
+      return this.errorReport(
+        serviceName,
+        absPath,
+        `${absPath} is not a directory.`,
+      );
     }
 
     const sourceFiles = await collectSourceFiles(absPath);
     if (sourceFiles.length === 0) {
-      return this.errorReport(serviceName, absPath, "No supported source files found.");
+      return this.errorReport(
+        serviceName,
+        absPath,
+        "No supported source files found.",
+      );
     }
 
     let filesScanned = 0;
@@ -175,16 +192,37 @@ export class SyncServiceKnowledge {
         errors.push(...parseResult.parseErrors.map((e) => `${relPath}: ${e}`));
       }
 
-      if (parseResult.symbols.length === 0) continue;
+      // ── DAG Upsert (YAML files) ──
+      if (parseResult.dags.length > 0) {
+        const dagResult = await this.upsertDagsToGraph(
+          serviceName,
+          parseResult,
+        );
+        totalSymbols += dagResult.nodesUpserted;
+        totalRelationships += dagResult.relsCreated;
 
-      // ── Graph Upsert ──
-      const graphResult = await this.upsertToGraph(serviceName, parseResult);
-      totalSymbols += graphResult.nodesUpserted;
-      totalRelationships += graphResult.relsCreated;
+        const dagVectors = await this.upsertDagsToVector(
+          serviceName,
+          parseResult,
+        );
+        totalVectors += dagVectors;
+      }
 
-      // ── Vector Upsert ──
-      const vectorCount = await this.upsertToVector(serviceName, parseResult);
-      totalVectors += vectorCount;
+      if (parseResult.symbols.length === 0 && parseResult.dags.length === 0)
+        continue;
+
+      // ── Graph Upsert (code symbols) ──
+      if (parseResult.symbols.length > 0) {
+        const graphResult = await this.upsertToGraph(serviceName, parseResult);
+        totalSymbols += graphResult.nodesUpserted;
+        totalRelationships += graphResult.relsCreated;
+      }
+
+      // ── Vector Upsert (code symbols) ──
+      if (parseResult.symbols.length > 0) {
+        const vectorCount = await this.upsertToVector(serviceName, parseResult);
+        totalVectors += vectorCount;
+      }
     }
 
     const languages = [...languagesSeen];
@@ -233,10 +271,9 @@ export class SyncServiceKnowledge {
     let relsCreated = 0;
 
     // Service node
-    await this.graphWrite(
-      `MERGE (s:Service {name: $service})`,
-      { service: serviceName },
-    );
+    await this.graphWrite(`MERGE (s:Service {name: $service})`, {
+      service: serviceName,
+    });
 
     // File node + CONTAINS edge from Service
     await this.graphWrite(
@@ -355,6 +392,210 @@ export class SyncServiceKnowledge {
     return ids.length;
   }
 
+  // ── DAG Graph Operations ─────────────────────────────────
+
+  private async upsertDagsToGraph(
+    serviceName: string,
+    result: ParseResult,
+  ): Promise<{ nodesUpserted: number; relsCreated: number }> {
+    let nodesUpserted = 0;
+    let relsCreated = 0;
+
+    for (const dag of result.dags) {
+      // DAG node
+      await this.graphWrite(
+        `MERGE (d:DAG {name: $dagName, service: $service})
+         SET d.file            = $file,
+             d.scheduleInterval = $schedule,
+             d.description     = $description,
+             d.owner           = $owner,
+             d.concurrency     = $concurrency,
+             d.updatedAt       = timestamp()
+         WITH d
+         MERGE (s:Service {name: $service})
+         MERGE (s)-[:CONTAINS]->(d)`,
+        {
+          dagName: dag.name,
+          service: serviceName,
+          file: result.file,
+          schedule: dag.scheduleInterval ?? "",
+          description: dag.description ?? "",
+          owner: dag.owner ?? "",
+          concurrency: dag.concurrency ?? 0,
+        },
+      );
+      nodesUpserted++;
+
+      // File node
+      await this.graphWrite(
+        `MERGE (fi:File {path: $file})
+         MERGE (s:Service {name: $service})
+         MERGE (s)-[:CONTAINS]->(fi)
+         SET fi.language = $language, fi.updatedAt = timestamp()`,
+        { file: result.file, service: serviceName, language: result.language },
+      );
+
+      for (const task of dag.tasks) {
+        // Task node + BELONGS_TO DAG
+        await this.graphWrite(
+          `MERGE (t:Task {name: $taskName, dag: $dagName, service: $service})
+           SET t.operator              = $operator,
+               t.pythonCallableFile    = $pyFile,
+               t.pythonCallableName    = $pyName,
+               t.bashCommand           = $bashCmd,
+               t.sql                   = $sql,
+               t.postgresConnId        = $pgConnId,
+               t.retries               = $retries,
+               t.executionTimeoutSecs  = $timeout,
+               t.file                  = $file,
+               t.updatedAt             = timestamp()
+           WITH t
+           MERGE (d:DAG {name: $dagName, service: $service})
+           MERGE (t)-[:BELONGS_TO]->(d)`,
+          {
+            taskName: task.name,
+            dagName: dag.name,
+            service: serviceName,
+            operator: task.operator,
+            pyFile: task.pythonCallableFile ?? "",
+            pyName: task.pythonCallableName ?? "",
+            bashCmd: task.bashCommand ?? "",
+            sql: task.sql ?? "",
+            pgConnId: task.postgresConnId ?? "",
+            retries: task.retries ?? 0,
+            timeout: task.executionTimeoutSecs ?? 0,
+            file: result.file,
+          },
+        );
+        nodesUpserted++;
+
+        // DEPENDS_ON edges (task → upstream task)
+        for (const dep of task.dependencies) {
+          await this.graphWrite(
+            `MERGE (t:Task {name: $taskName, dag: $dagName, service: $service})
+             MERGE (upstream:Task {name: $depName, dag: $dagName, service: $service})
+             MERGE (t)-[r:DEPENDS_ON]->(upstream)
+             SET r.updatedAt = timestamp()`,
+            {
+              taskName: task.name,
+              dagName: dag.name,
+              service: serviceName,
+              depName: dep,
+            },
+          );
+          relsCreated++;
+        }
+
+        // INVOKES edge: PythonOperator task → Python function
+        if (task.pythonCallableName) {
+          await this.graphWrite(
+            `MERGE (t:Task {name: $taskName, dag: $dagName, service: $service})
+             MERGE (f:Function {name: $funcName})
+             MERGE (t)-[r:INVOKES]->(f)
+             SET r.callableFile = $pyFile, r.updatedAt = timestamp()`,
+            {
+              taskName: task.name,
+              dagName: dag.name,
+              service: serviceName,
+              funcName: task.pythonCallableName,
+              pyFile: task.pythonCallableFile ?? "",
+            },
+          );
+          relsCreated++;
+        }
+      }
+    }
+
+    return { nodesUpserted, relsCreated };
+  }
+
+  // ── DAG Vector Operations ────────────────────────────────
+
+  private async upsertDagsToVector(
+    serviceName: string,
+    result: ParseResult,
+  ): Promise<number> {
+    if (result.dags.length === 0) return 0;
+
+    const ids: string[] = [];
+    const documents: string[] = [];
+    const metadatas: Metadata[] = [];
+
+    for (const dag of result.dags) {
+      // Vector for the DAG itself
+      const dagId = `${serviceName}::${result.file}::dag::${dag.name}`;
+      const taskList = dag.tasks.map((t) => t.name).join(", ");
+      const dagDoc = [
+        `[yaml] DAG: ${dag.name}`,
+        `File: ${result.file}`,
+        dag.description ? `Description: ${dag.description}` : "",
+        dag.scheduleInterval ? `Schedule: ${dag.scheduleInterval}` : "",
+        `Tasks: ${taskList}`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      ids.push(dagId);
+      documents.push(dagDoc);
+      metadatas.push({
+        service: serviceName,
+        file: result.file,
+        language: "yaml",
+        functionName: dag.name,
+        kind: "dag",
+        startLine: 0,
+        endLine: 0,
+      });
+
+      // Vector for each task
+      for (const task of dag.tasks) {
+        const taskId = `${serviceName}::${result.file}::task::${task.name}`;
+        const deps =
+          task.dependencies.length > 0
+            ? `Dependencies: ${task.dependencies.join(", ")}`
+            : "";
+        const operatorShort = task.operator.split(".").pop() ?? task.operator;
+
+        const taskDoc = [
+          `[yaml] Task: ${task.name} (${operatorShort})`,
+          `DAG: ${dag.name}`,
+          `File: ${result.file}`,
+          `Operator: ${task.operator}`,
+          task.pythonCallableName ? `Calls: ${task.pythonCallableName}` : "",
+          task.pythonCallableFile
+            ? `Callable file: ${task.pythonCallableFile}`
+            : "",
+          task.bashCommand ? `Bash command: ${task.bashCommand}` : "",
+          task.sql ? `SQL: ${task.sql}` : "",
+          task.postgresConnId
+            ? `Postgres connection: ${task.postgresConnId}`
+            : "",
+          deps,
+          task.opKwargs ? `Op kwargs: ${JSON.stringify(task.opKwargs)}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
+
+        ids.push(taskId);
+        documents.push(taskDoc);
+        metadatas.push({
+          service: serviceName,
+          file: result.file,
+          language: "yaml",
+          functionName: task.name,
+          kind: "task",
+          startLine: 0,
+          endLine: 0,
+          hasInfra: !!(task.postgresConnId || task.bashCommand),
+        });
+      }
+    }
+
+    const collection = await this.getCollection();
+    await collection.upsert({ ids, documents, metadatas });
+    return ids.length;
+  }
+
   // ── Staleness Check ──────────────────────────────────────
 
   private isChanged(filePath: string, content: string): boolean {
@@ -366,7 +607,11 @@ export class SyncServiceKnowledge {
 
   // ── Error Helper ─────────────────────────────────────────
 
-  private errorReport(service: string, absPath: string, msg: string): SyncReport {
+  private errorReport(
+    service: string,
+    absPath: string,
+    msg: string,
+  ): SyncReport {
     return {
       service,
       path: absPath,

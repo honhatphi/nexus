@@ -11,11 +11,8 @@
 
 import path from "node:path";
 import fs from "node:fs/promises";
-import {
-  Parser,
-  Language,
-  Node as SyntaxNode,
-} from "web-tree-sitter";
+import yaml from "js-yaml";
+import { Parser, Language, Node as SyntaxNode } from "web-tree-sitter";
 import type {
   SupportedLanguage,
   SymbolKind,
@@ -26,6 +23,8 @@ import type {
   InfraKind,
   ClassInfo,
   ParseResult,
+  DagInfo,
+  DagTaskInfo,
 } from "./types.js";
 import { EXTENSION_MAP, toLegacyFunctionInfo } from "./types.js";
 
@@ -33,11 +32,13 @@ import { EXTENSION_MAP, toLegacyFunctionInfo } from "./types.js";
 // CodeParser
 // ─────────────────────────────────────────────────────────────
 
+type TreeSitterLanguage = Exclude<SupportedLanguage, "yaml">;
+
 export class CodeParser {
   private static initPromise: Promise<void> | null = null;
-  private static languageCache = new Map<SupportedLanguage, Language>();
+  private static languageCache = new Map<TreeSitterLanguage, Language>();
 
-  private static readonly WASM_FILES: Record<SupportedLanguage, string> = {
+  private static readonly WASM_FILES: Record<TreeSitterLanguage, string> = {
     go: "tree-sitter-go.wasm",
     python: "tree-sitter-python.wasm",
     php: "tree-sitter-php.wasm",
@@ -54,12 +55,14 @@ export class CodeParser {
     await CodeParser.initPromise;
   }
 
-  private static async loadLanguage(lang: SupportedLanguage): Promise<Language> {
+  private static async loadLanguage(
+    lang: TreeSitterLanguage,
+  ): Promise<Language> {
     const cached = CodeParser.languageCache.get(lang);
     if (cached) return cached;
 
     const wasmDir = path.dirname(
-      require.resolve("tree-sitter-wasms/package.json")
+      require.resolve("tree-sitter-wasms/package.json"),
     );
     const wasmPath = path.join(wasmDir, "out", CodeParser.WASM_FILES[lang]);
 
@@ -90,14 +93,23 @@ export class CodeParser {
         functions: [],
         classes: [],
         infraPatterns: [],
+        dags: [],
         parseErrors: [`Unsupported file extension: ${path.extname(filePath)}`],
       };
     }
 
+    // ── YAML files: use js-yaml instead of tree-sitter ──
+    if (language === "yaml") {
+      return this.parseYamlDag(filePath, source);
+    }
+
+    // After this point, language is a tree-sitter language
+    const tsLang = language as TreeSitterLanguage;
+
     await CodeParser.ensureInit();
 
     const parser = new Parser();
-    const lang = await CodeParser.loadLanguage(language);
+    const lang = await CodeParser.loadLanguage(tsLang);
     parser.setLanguage(lang);
 
     const tree = parser.parse(source);
@@ -109,6 +121,7 @@ export class CodeParser {
         functions: [],
         classes: [],
         infraPatterns: [],
+        dags: [],
         parseErrors: ["Failed to parse source — tree-sitter returned null."],
       };
     }
@@ -116,15 +129,17 @@ export class CodeParser {
     const parseErrors: string[] = [];
     const errorNodes = findAll(tree.rootNode, ["ERROR"]);
     for (const e of errorNodes) {
-      parseErrors.push(`Syntax error at line ${e.startPosition.row + 1}: ${e.text.slice(0, 80)}`);
+      parseErrors.push(
+        `Syntax error at line ${e.startPosition.row + 1}: ${e.text.slice(0, 80)}`,
+      );
     }
 
-    const extractor = EXTRACTORS[language];
+    const extractor = EXTRACTORS[tsLang];
     const symbols = extractor(tree.rootNode);
 
     // Extract classes
-    const classes = CLASS_EXTRACTORS[language]
-      ? CLASS_EXTRACTORS[language](tree.rootNode)
+    const classes = CLASS_EXTRACTORS[tsLang]
+      ? CLASS_EXTRACTORS[tsLang](tree.rootNode)
       : [];
 
     // Detect infrastructure patterns from all function bodies + imports
@@ -137,6 +152,111 @@ export class CodeParser {
       functions: symbols.map(toLegacyFunctionInfo),
       classes,
       infraPatterns,
+      dags: [],
+      parseErrors,
+    };
+  }
+
+  // ── YAML DAG Parser ─────────────────────────────────────
+
+  private parseYamlDag(filePath: string, source: string): ParseResult {
+    const parseErrors: string[] = [];
+    const dags: DagInfo[] = [];
+
+    let doc: unknown;
+    try {
+      doc = yaml.load(source);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      parseErrors.push(`YAML parse error: ${msg}`);
+      return {
+        file: filePath,
+        language: "yaml",
+        symbols: [],
+        functions: [],
+        classes: [],
+        infraPatterns: [],
+        dags: [],
+        parseErrors,
+      };
+    }
+
+    if (!doc || typeof doc !== "object") {
+      return {
+        file: filePath,
+        language: "yaml",
+        symbols: [],
+        functions: [],
+        classes: [],
+        infraPatterns: [],
+        dags: [],
+        parseErrors: ["YAML file has no top-level object."],
+      };
+    }
+
+    // Each top-level key is a DAG name (Airflow dag-factory convention)
+    for (const [dagName, dagDef] of Object.entries(
+      doc as Record<string, unknown>,
+    )) {
+      if (!dagDef || typeof dagDef !== "object") continue;
+
+      const dagObj = dagDef as Record<string, unknown>;
+      const defaultArgs = (dagObj.default_args ?? {}) as Record<
+        string,
+        unknown
+      >;
+      const tasksObj = dagObj.tasks as Record<string, unknown> | undefined;
+
+      const dagInfo: DagInfo = {
+        name: dagName,
+        scheduleInterval: asString(dagObj.schedule_interval),
+        description: asString(dagObj.description),
+        owner: asString(defaultArgs.owner),
+        concurrency:
+          typeof dagObj.concurrency === "number" ? dagObj.concurrency : null,
+        tasks: [],
+      };
+
+      if (tasksObj && typeof tasksObj === "object") {
+        for (const [taskName, taskDef] of Object.entries(tasksObj)) {
+          if (!taskDef || typeof taskDef !== "object") continue;
+          const t = taskDef as Record<string, unknown>;
+
+          const task: DagTaskInfo = {
+            name: taskName,
+            operator: asString(t.operator) ?? "unknown",
+            pythonCallableFile: asString(t.python_callable_file),
+            pythonCallableName: asString(t.python_callable_name),
+            bashCommand: asString(t.bash_command),
+            sql: asString(t.sql),
+            postgresConnId: asString(t.postgres_conn_id),
+            dependencies: asStringArray(t.dependencies),
+            opKwargs:
+              t.op_kwargs && typeof t.op_kwargs === "object"
+                ? (t.op_kwargs as Record<string, unknown>)
+                : null,
+            retries: typeof t.retries === "number" ? t.retries : null,
+            executionTimeoutSecs:
+              typeof t.execution_timeout_secs === "number"
+                ? t.execution_timeout_secs
+                : null,
+          };
+
+          dagInfo.tasks.push(task);
+        }
+      }
+
+      dags.push(dagInfo);
+    }
+
+    return {
+      file: filePath,
+      language: "yaml",
+      symbols: [],
+      functions: [],
+      classes: [],
+      infraPatterns: [],
+      dags,
       parseErrors,
     };
   }
@@ -152,7 +272,10 @@ export function detectLanguage(filePath: string): SupportedLanguage | null {
   return _defaultParser.detectLanguage(filePath);
 }
 
-export async function parseSource(filePath: string, source: string): Promise<ParseResult> {
+export async function parseSource(
+  filePath: string,
+  source: string,
+): Promise<ParseResult> {
   return _defaultParser.parseSource(filePath, source);
 }
 
@@ -188,7 +311,12 @@ function findAll(root: SyntaxNode, types: string[]): SyntaxNode[] {
 
 function extractCalls(body: SyntaxNode): FunctionCall[] {
   // "call_expression" → Go, TS; "function_call_expression" → PHP; "call" → Python; "invocation_expression" → C#
-  const callNodes = findAll(body, ["call_expression", "function_call_expression", "call", "invocation_expression"]);
+  const callNodes = findAll(body, [
+    "call_expression",
+    "function_call_expression",
+    "call",
+    "invocation_expression",
+  ]);
   const calls: FunctionCall[] = [];
   for (const node of callNodes) {
     const fn = node.childForFieldName("function") ?? node.firstChild;
@@ -213,7 +341,12 @@ function extractDocstring(node: SyntaxNode): string | null {
 
   while (prev) {
     const type = prev.type;
-    if (type === "comment" || type === "doc_comment" || type === "line_comment" || type === "block_comment") {
+    if (
+      type === "comment" ||
+      type === "doc_comment" ||
+      type === "line_comment" ||
+      type === "block_comment"
+    ) {
       commentLines.unshift(prev.text.trim());
       prev = prev.previousNamedSibling;
     } else {
@@ -231,7 +364,10 @@ function extractDocstring(node: SyntaxNode): string | null {
     const firstStmt = body.firstNamedChild;
     if (firstStmt?.type === "expression_statement") {
       const strNode = firstStmt.firstNamedChild;
-      if (strNode?.type === "string" || strNode?.type === "concatenated_string") {
+      if (
+        strNode?.type === "string" ||
+        strNode?.type === "concatenated_string"
+      ) {
         return cleanDocstring(strNode.text);
       }
     }
@@ -259,7 +395,7 @@ function cleanDocstring(raw: string): string {
         .replace(/^\s*\*\s?/, "")
         .replace(/^\s*\/{2,3}\s?/, "")
         .replace(/^\s*#\s?/, "")
-        .trimEnd()
+        .trimEnd(),
     )
     .join("\n")
     .trim();
@@ -285,7 +421,10 @@ function resolveKind(nodeType: string): SymbolKind {
 // ── Go ───────────────────────────────────────────────────────
 
 function extractGo(root: SyntaxNode): SymbolInfo[] {
-  const funcNodes = findAll(root, ["function_declaration", "method_declaration"]);
+  const funcNodes = findAll(root, [
+    "function_declaration",
+    "method_declaration",
+  ]);
   return funcNodes.map((node) => {
     const nameNode = node.childForFieldName("name");
     const paramsNode = node.childForFieldName("parameters");
@@ -331,7 +470,10 @@ function extractPython(root: SyntaxNode): SymbolInfo[] {
         if (!child) continue;
         if (child.type === "identifier") {
           params.push({ name: child.text, type: null });
-        } else if (child.type === "typed_parameter" || child.type === "typed_default_parameter") {
+        } else if (
+          child.type === "typed_parameter" ||
+          child.type === "typed_default_parameter"
+        ) {
           const pName = child.firstNamedChild;
           const pType = child.childForFieldName("type");
           params.push({ name: textOf(pName), type: textOf(pType) || null });
@@ -342,12 +484,13 @@ function extractPython(root: SyntaxNode): SymbolInfo[] {
       }
     }
 
-    const isMethod = node.parent?.type === "block" &&
+    const isMethod =
+      node.parent?.type === "block" &&
       node.parent.parent?.type === "class_definition";
 
     return {
       name: textOf(nameNode),
-      kind: isMethod ? "method" as SymbolKind : "function" as SymbolKind,
+      kind: isMethod ? ("method" as SymbolKind) : ("function" as SymbolKind),
       params,
       returnType: textOf(returnNode) || null,
       docstring: extractDocstring(node),
@@ -361,7 +504,10 @@ function extractPython(root: SyntaxNode): SymbolInfo[] {
 // ── PHP ──────────────────────────────────────────────────────
 
 function extractPHP(root: SyntaxNode): SymbolInfo[] {
-  const funcNodes = findAll(root, ["function_definition", "method_declaration"]);
+  const funcNodes = findAll(root, [
+    "function_definition",
+    "method_declaration",
+  ]);
   return funcNodes.map((node) => {
     const nameNode = node.childForFieldName("name");
     const paramsNode = node.childForFieldName("parameters");
@@ -414,8 +560,12 @@ function extractTypeScript(root: SyntaxNode): SymbolInfo[] {
     if (paramsNode) {
       for (const child of paramsNode.namedChildren) {
         if (!child) continue;
-        if (child.type === "required_parameter" || child.type === "optional_parameter") {
-          const pName = child.childForFieldName("pattern") ?? child.firstNamedChild;
+        if (
+          child.type === "required_parameter" ||
+          child.type === "optional_parameter"
+        ) {
+          const pName =
+            child.childForFieldName("pattern") ?? child.firstNamedChild;
           const pType = child.childForFieldName("type");
           params.push({ name: textOf(pName), type: textOf(pType) || null });
         } else if (child.type === "identifier") {
@@ -425,9 +575,11 @@ function extractTypeScript(root: SyntaxNode): SymbolInfo[] {
     }
 
     // For arrow functions, docstring may be on the parent variable declaration
-    const docNode = node.type === "arrow_function" && node.parent?.type === "variable_declarator"
-      ? node.parent.parent ?? node
-      : node;
+    const docNode =
+      node.type === "arrow_function" &&
+      node.parent?.type === "variable_declarator"
+        ? (node.parent.parent ?? node)
+        : node;
 
     return {
       name: textOf(nameNode),
@@ -465,12 +617,13 @@ function extractCSharp(root: SyntaxNode): SymbolInfo[] {
       }
     }
 
-    const isMethod = node.parent?.type === "declaration_list" &&
+    const isMethod =
+      node.parent?.type === "declaration_list" &&
       node.parent.parent?.type === "class_declaration";
 
     return {
       name: textOf(nameNode),
-      kind: isMethod ? "method" as SymbolKind : "function" as SymbolKind,
+      kind: isMethod ? ("method" as SymbolKind) : ("function" as SymbolKind),
       params,
       returnType: textOf(returnNode) || null,
       docstring: extractDocstring(node),
@@ -483,7 +636,10 @@ function extractCSharp(root: SyntaxNode): SymbolInfo[] {
 
 // ── Extractor Registry ───────────────────────────────────────
 
-const EXTRACTORS: Record<SupportedLanguage, (root: SyntaxNode) => SymbolInfo[]> = {
+const EXTRACTORS: Record<
+  TreeSitterLanguage,
+  (root: SyntaxNode) => SymbolInfo[]
+> = {
   go: extractGo,
   python: extractPython,
   php: extractPHP,
@@ -531,7 +687,10 @@ function extractPythonClasses(root: SyntaxNode): ClassInfo[] {
 }
 
 function extractCSharpClasses(root: SyntaxNode): ClassInfo[] {
-  const classNodes = findAll(root, ["class_declaration", "interface_declaration"]);
+  const classNodes = findAll(root, [
+    "class_declaration",
+    "interface_declaration",
+  ]);
   return classNodes.map((node) => {
     const nameNode = node.childForFieldName("name");
     const basesNode = node.childForFieldName("bases");
@@ -547,7 +706,10 @@ function extractCSharpClasses(root: SyntaxNode): ClassInfo[] {
 
     const methods: string[] = [];
     if (bodyNode) {
-      const methodNodes = findAll(bodyNode, ["method_declaration", "constructor_declaration"]);
+      const methodNodes = findAll(bodyNode, [
+        "method_declaration",
+        "constructor_declaration",
+      ]);
       for (const m of methodNodes) {
         const mName = m.childForFieldName("name");
         if (mName) methods.push(mName.text.trim());
@@ -565,7 +727,9 @@ function extractCSharpClasses(root: SyntaxNode): ClassInfo[] {
   });
 }
 
-const CLASS_EXTRACTORS: Partial<Record<SupportedLanguage, (root: SyntaxNode) => ClassInfo[]>> = {
+const CLASS_EXTRACTORS: Partial<
+  Record<SupportedLanguage, (root: SyntaxNode) => ClassInfo[]>
+> = {
   python: extractPythonClasses,
   csharp: extractCSharpClasses,
 };
@@ -610,7 +774,8 @@ const INFRA_RULES: InfraRule[] = [
   },
   // ── Kafka Consume ──────────────────────────────────────
   {
-    pattern: /\.consume_batch$|\.sequential_consume$|MessageConsumer\.from_config|\.consume$|consume_cdc_messages/,
+    pattern:
+      /\.consume_batch$|\.sequential_consume$|MessageConsumer\.from_config|\.consume$|consume_cdc_messages/,
     kind: "kafka_consume",
     targetArg: "topic",
     fallbackTarget: "<topic>",
@@ -670,7 +835,8 @@ const INFRA_RULES: InfraRule[] = [
   },
   // ── HTTP ───────────────────────────────────────────────
   {
-    pattern: /requests\.post$|requests\.get$|requests\.put$|requests\.patch$|requests\.delete$/,
+    pattern:
+      /requests\.post$|requests\.get$|requests\.put$|requests\.patch$|requests\.delete$/,
     kind: "http_request",
     targetArg: 0,
     fallbackTarget: "<url>",
@@ -682,14 +848,22 @@ const INFRA_RULES: InfraRule[] = [
  * Scan the entire file AST for infrastructure patterns.
  * Works for all supported languages but infra rules are tuned for Python patterns.
  */
-function detectInfraPatterns(root: SyntaxNode, _language: string): InfraPattern[] {
+function detectInfraPatterns(
+  root: SyntaxNode,
+  _language: string,
+): InfraPattern[] {
   const patterns: InfraPattern[] = [];
 
   // Python uses "call" nodes; others use "call_expression"
-  const callNodes = findAll(root, ["call", "call_expression", "function_call_expression"]);
+  const callNodes = findAll(root, [
+    "call",
+    "call_expression",
+    "function_call_expression",
+  ]);
 
   for (const callNode of callNodes) {
-    const fnNode = callNode.childForFieldName("function") ?? callNode.firstChild;
+    const fnNode =
+      callNode.childForFieldName("function") ?? callNode.firstChild;
     if (!fnNode) continue;
     const callee = fnNode.text.trim();
 
@@ -703,9 +877,13 @@ function detectInfraPatterns(root: SyntaxNode, _language: string): InfraPattern[
       if (argsNode) {
         // Try to extract target from arguments
         if (typeof rule.targetArg === "number") {
-          target = extractPositionalStringArg(argsNode, rule.targetArg) ?? rule.fallbackTarget;
+          target =
+            extractPositionalStringArg(argsNode, rule.targetArg) ??
+            rule.fallbackTarget;
         } else if (typeof rule.targetArg === "string") {
-          target = extractKeywordStringArg(argsNode, rule.targetArg) ?? rule.fallbackTarget;
+          target =
+            extractKeywordStringArg(argsNode, rule.targetArg) ??
+            rule.fallbackTarget;
         }
 
         // Extract metadata keys
@@ -742,13 +920,21 @@ function detectInfraPatterns(root: SyntaxNode, _language: string): InfraPattern[
  * Extract the string value of a positional argument (0-based index).
  * Handles Python argument_list: (pos0, pos1, key=val, ...)
  */
-function extractPositionalStringArg(argsNode: SyntaxNode, index: number): string | null {
+function extractPositionalStringArg(
+  argsNode: SyntaxNode,
+  index: number,
+): string | null {
   let posIdx = 0;
   for (const child of argsNode.namedChildren) {
     if (!child) continue;
     // Skip keyword arguments (type = "keyword_argument" in Python)
-    if (child.type === "keyword_argument" || child.type === "spread_element" ||
-        child.type === "dictionary_splat" || child.type === "list_splat") continue;
+    if (
+      child.type === "keyword_argument" ||
+      child.type === "spread_element" ||
+      child.type === "dictionary_splat" ||
+      child.type === "list_splat"
+    )
+      continue;
     if (posIdx === index) {
       return extractStringValue(child);
     }
@@ -760,7 +946,10 @@ function extractPositionalStringArg(argsNode: SyntaxNode, index: number): string
 /**
  * Extract the string value of a keyword argument by key name.
  */
-function extractKeywordStringArg(argsNode: SyntaxNode, keyName: string): string | null {
+function extractKeywordStringArg(
+  argsNode: SyntaxNode,
+  keyName: string,
+): string | null {
   for (const child of argsNode.namedChildren) {
     if (!child) continue;
     if (child.type === "keyword_argument") {
@@ -808,4 +997,18 @@ function extractStringValue(node: SyntaxNode): string | null {
     return `$${node.text.trim()}`;
   }
   return null;
+}
+
+// ─────────────────────────────────────────────────────────────
+// YAML Helper Functions
+// ─────────────────────────────────────────────────────────────
+
+function asString(val: unknown): string | null {
+  if (val === null || val === undefined) return null;
+  return String(val);
+}
+
+function asStringArray(val: unknown): string[] {
+  if (!Array.isArray(val)) return [];
+  return val.filter((v) => v != null).map(String);
 }

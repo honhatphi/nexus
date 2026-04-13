@@ -4,7 +4,13 @@
 // ChromaDB (vector embeddings).
 // ─────────────────────────────────────────────────────────────
 
-export type SupportedLanguage = "go" | "python" | "php" | "typescript" | "csharp";
+export type SupportedLanguage =
+  | "go"
+  | "python"
+  | "php"
+  | "typescript"
+  | "csharp"
+  | "yaml";
 
 export const EXTENSION_MAP: Record<string, SupportedLanguage> = {
   ".go": "go",
@@ -13,12 +19,19 @@ export const EXTENSION_MAP: Record<string, SupportedLanguage> = {
   ".ts": "typescript",
   ".tsx": "typescript",
   ".cs": "csharp",
+  ".yml": "yaml",
+  ".yaml": "yaml",
 };
 
 // ── Symbol-level types ───────────────────────────────────────
 
 /** The kind of a top-level symbol extracted from source code. */
-export type SymbolKind = "function" | "method" | "arrow_function" | "class" | "interface";
+export type SymbolKind =
+  | "function"
+  | "method"
+  | "arrow_function"
+  | "class"
+  | "interface";
 
 export interface Parameter {
   name: string;
@@ -119,6 +132,48 @@ export function toLegacyFunctionInfo(s: SymbolInfo): FunctionInfo {
   };
 }
 
+// ── DAG Task types (Airflow YAML) ─────────────────────────────
+
+export interface DagTaskInfo {
+  /** Task name as defined in the YAML DAG. */
+  name: string;
+  /** Full operator class path (e.g. airflow.operators.python_operator.PythonOperator). */
+  operator: string;
+  /** Path to the Python callable file (PythonOperator). */
+  pythonCallableFile: string | null;
+  /** Name of the Python callable function (PythonOperator). */
+  pythonCallableName: string | null;
+  /** Bash command string (BashOperator). */
+  bashCommand: string | null;
+  /** SQL file or inline SQL (PostgresOperator). */
+  sql: string | null;
+  /** Postgres connection ID. */
+  postgresConnId: string | null;
+  /** Task names this task depends on. */
+  dependencies: string[];
+  /** Operator keyword arguments passed to the callable. */
+  opKwargs: Record<string, unknown> | null;
+  /** Number of retries. */
+  retries: number | null;
+  /** Execution timeout in seconds. */
+  executionTimeoutSecs: number | null;
+}
+
+export interface DagInfo {
+  /** DAG name (top-level key in the YAML). */
+  name: string;
+  /** Cron schedule interval. */
+  scheduleInterval: string | null;
+  /** Description. */
+  description: string | null;
+  /** DAG-level default owner. */
+  owner: string | null;
+  /** Concurrency limit. */
+  concurrency: number | null;
+  /** All tasks in this DAG. */
+  tasks: DagTaskInfo[];
+}
+
 // ── File-level result ────────────────────────────────────────
 
 export interface ParseResult {
@@ -134,5 +189,7 @@ export interface ParseResult {
   classes: ClassInfo[];
   /** Infrastructure patterns detected (Kafka, DB, HTTP, etc.). */
   infraPatterns: InfraPattern[];
+  /** DAG definitions extracted from YAML files (Airflow). */
+  dags: DagInfo[];
   parseErrors: string[];
 }

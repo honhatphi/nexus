@@ -10,6 +10,8 @@ export type {
   ClassInfo,
   FunctionInfo,
   ParseResult,
+  DagTaskInfo,
+  DagInfo,
 } from "./types.js";
 export { EXTENSION_MAP, toLegacyFunctionInfo } from "./types.js";
 
