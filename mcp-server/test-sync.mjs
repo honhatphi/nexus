@@ -53,11 +53,11 @@ async function main() {
     {
       name: "sync_service_knowledge",
       arguments: {
-        service_path: "/Users/CPS-MKT1-D02072/Workspace/Nexus/services/warehouse-2.0",
+        service_path: "/workspace/services/warehouse-2.0",
         force_update: false,
       },
     },
-    3
+    3,
   );
 
   if (syncResult.result?.content) {
@@ -79,7 +79,7 @@ async function main() {
           "MATCH (f:Function)-[:DEFINED_IN]->(fi:File)-[:BELONGS_TO]->(s:Service) RETURN s.name AS service, count(f) AS functions",
       },
     },
-    4
+    4,
   );
   if (graphResult.result?.content) {
     for (const c of graphResult.result.content) {
@@ -100,7 +100,7 @@ async function main() {
           "MATCH (f:Function)-[r:PRODUCES_TO|CONSUMES_FROM]->(t:KafkaTopic) RETURN type(r) AS relation, t.name AS topic, collect(f.name) AS functions",
       },
     },
-    6
+    6,
   );
   if (kafkaResult.result?.content) {
     for (const c of kafkaResult.result.content) {
@@ -120,7 +120,7 @@ async function main() {
           "MATCH (f:Function)-[r:CONNECTS_TO]->(d:Database) RETURN d.name AS database, d.type AS type, count(f) AS functions",
       },
     },
-    7
+    7,
   );
   if (dbResult.result?.content) {
     for (const c of dbResult.result.content) {
@@ -140,7 +140,7 @@ async function main() {
           "MATCH (c:Class)-[:INHERITS]->(base:Class) RETURN c.name AS class, base.name AS inherits, c.file AS file LIMIT 20",
       },
     },
-    8
+    8,
   );
   if (classResult.result?.content) {
     for (const c of classResult.result.content) {
@@ -160,7 +160,7 @@ async function main() {
           "MATCH (caller:Function)-[r:CALLS]->(callee:Function) RETURN caller.name AS caller, callee.name AS callee, r.line AS line LIMIT 10",
       },
     },
-    9
+    9,
   );
   if (callsResult.result?.content) {
     for (const c of callsResult.result.content) {
@@ -181,7 +181,7 @@ async function main() {
         topK: 3,
       },
     },
-    5
+    5,
   );
   if (searchResult.result?.content) {
     for (const c of searchResult.result.content) {

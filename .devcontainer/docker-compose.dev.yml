@@ -8,6 +8,7 @@ services:
       - .:/workspace:cached
       - node_modules_common:/workspace/nexus-hub/common-tools/node_modules
       - node_modules_mcp:/workspace/mcp-server/node_modules
+      - /var/run/docker.sock:/var/run/docker.sock
     command: sleep infinity
     environment:
       - NODE_ENV=development

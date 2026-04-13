@@ -12,10 +12,10 @@ The project follows a **Hub & Spoke** architecture:
 
 All agent configuration is defined in `/nexus-config.yaml`.
 
-> **Nexus Hub (`/nexus-hub`) là nguồn tri thức DUY NHẤT (Single Source of Truth) của toàn hệ thống.**
-> Mọi quyết định kiến trúc, pattern thiết kế, ràng buộc kỹ thuật, và best practice **đều phải được lưu trữ và tra cứu từ Hub**.
-> Không service nào được tự định nghĩa pattern riêng nếu Hub đã có pattern tương đương.
-> Khi Hub và local code xung đột — **Hub luôn thắng** trừ khi người dùng override tường minh.
+> **Nexus Hub (`/nexus-hub`) is the SINGLE Source of Truth for the entire system.**
+> All architectural decisions, design patterns, technical constraints, and best practices **must be stored in and retrieved from the Hub**.
+> No service may define its own pattern if the Hub already has an equivalent.
+> When Hub and local code conflict — **Hub always wins** unless the user explicitly overrides.
 
 ---
 
@@ -82,24 +82,24 @@ Services live locally and are **not tracked in git** — they are analyzed by th
 
 ### Cross-Service Dependency Check (mandatory)
 
-> **Trước khi code tính năng mới**, Agent **phải** dùng `query_graph` để kiểm tra các phụ thuộc liên dịch vụ (cross-service dependencies).
+> **Before implementing any new feature**, the agent **must** use `query_graph` to check cross-service dependencies.
 
 ```
-# Kiểm tra hàm/module đang được service nào gọi
+# Check which services call a specific function/module
 query_graph({
   query: "MATCH (caller:Function)-[:CALLS]->(target:Function {name: $name}) RETURN caller.name, caller.service",
   params: { name: "TargetFunctionName" }
 })
 
-# Kiểm tra toàn bộ dependency chain của một service
+# Check the full dependency chain of a service
 get_impact_analysis({ name: "PaymentService", maxDepth: 3 })
 ```
 
 **Rules:**
 
-1. Nếu hàm/module bị gọi bởi service khác → **không được thay đổi signature** mà không có approval.
-2. Nếu cần thay đổi contract → tạo version mới (v2) song song, không sửa version cũ.
-3. Agent phải liệt kê **tất cả service bị ảnh hưởng** trước khi đề xuất thay đổi.
+1. If a function/module is called by another service → **do not change its signature** without approval.
+2. If a contract change is needed → create a new version (v2) in parallel; do not modify the existing version.
+3. The agent must list **all affected services** before proposing any change.
 
 ### When KB / Hub Conflicts with Request
 
@@ -197,9 +197,10 @@ Nexus/
 │       ├── clients/               #   DB clients (Memgraph, ChromaDB)
 │       └── tools/                 #   MCP tools (sync, parse, query, search, impact)
 │
-├── agents/                        # Agent definitions (JSON configs)
-│   ├── nexus-librarian.json       #   Hub knowledge management & sync
-│   └── service-worker.json        #   Service-scoped code execution
+├── .github/agents/                # VS Code Copilot Custom Agents (.agent.md)
+│   ├── hub-manager.agent.md       #   Hub knowledge management & sync
+│   ├── coder.agent.md             #   Service-scoped code execution
+│   └── search.agent.md            #   KB-driven Q&A, reports & analysis
 │
 ├── agentic-workflows/             # Multi-step workflow orchestrations
 │   ├── feature-flow.md            #   Feature implementation workflow
@@ -228,20 +229,20 @@ The MCP server (`/mcp-server`) exposes 5 tools via HTTP on port 3100:
 
 ## Global Skills — Security & API Design
 
-Các Global Skills sau đây áp dụng cho **toàn bộ project** (mọi service trong `/services/*` và mọi tool trong `/mcp-server/`). Agent phải tuân thủ khi code bất kỳ tính năng nào.
+The following Global Skills apply to the **entire project** (all services in `/services/*` and all tools in `/mcp-server/`). The agent must comply when implementing any feature.
 
 ### 🔐 Security Skill
 
-1. **Input Validation** — Mọi dữ liệu từ bên ngoài (HTTP request, message queue, file upload) phải được validate và sanitize trước khi xử lý. Dùng schema validation (zod, JSON Schema, struct tags) phù hợp với từng runtime.
-2. **Authentication & Authorization** — Mọi endpoint phải yêu cầu authentication (JWT/OAuth2). Authorization phải dùng RBAC. Không hardcode roles trong code.
-3. **Secret Management** — Không bao giờ commit secrets, API keys, hay credentials vào source code. Sử dụng environment variables hoặc secret manager. Kiểm tra `.env` files được liệt kê trong `.gitignore`.
-4. **OWASP Top 10** — Agent phải chủ động phát hiện và cảnh báo các lỗ hổng: SQL/NoSQL injection, XSS, CSRF, broken access control, security misconfiguration.
-5. **Dependency Security** — Khi thêm dependency mới, kiểm tra known vulnerabilities. Không dùng package deprecated hoặc có CVE nghiêm trọng.
+1. **Input Validation** — All external data (HTTP requests, message queues, file uploads) must be validated and sanitized before processing. Use schema validation (zod, JSON Schema, struct tags) appropriate to each runtime.
+2. **Authentication & Authorization** — All endpoints must require authentication (JWT/OAuth2). Authorization must use RBAC. Never hardcode roles in code.
+3. **Secret Management** — Never commit secrets, API keys, or credentials to source code. Use environment variables or a secret manager. Verify `.env` files are listed in `.gitignore`.
+4. **OWASP Top 10** — The agent must proactively detect and flag vulnerabilities: SQL/NoSQL injection, XSS, CSRF, broken access control, security misconfiguration.
+5. **Dependency Security** — When adding a new dependency, check for known vulnerabilities. Do not use deprecated packages or those with critical CVEs.
 
 ### 🌐 API Design Skill
 
-1. **RESTful Conventions** — Sử dụng đúng HTTP methods (GET/POST/PUT/PATCH/DELETE), status codes (2xx/4xx/5xx), và resource naming (`/users/{id}`, không `/getUser`).
-2. **Consistent Response Format** — Mọi API response phải tuân theo cấu trúc chuẩn:
+1. **RESTful Conventions** — Use correct HTTP methods (GET/POST/PUT/PATCH/DELETE), status codes (2xx/4xx/5xx), and resource naming (`/users/{id}`, not `/getUser`).
+2. **Consistent Response Format** — All API responses must follow this standard structure:
    ```json
    {
      "success": true,
@@ -250,12 +251,12 @@ Các Global Skills sau đây áp dụng cho **toàn bộ project** (mọi servic
      "meta": { "page": 1, "total": 100 }
    }
    ```
-3. **Versioning** — API phải được version (`/v1/`, `/v2/`). Không breaking change trên version đang active.
-4. **Rate Limiting & Pagination** — Mọi public endpoint phải có rate limiting. List endpoints phải hỗ trợ pagination (cursor-based hoặc offset-based).
-5. **Documentation** — Mọi endpoint mới phải có OpenAPI/Swagger spec. Agent phải gợi ý viết spec khi tạo route mới.
-6. **Cross-Service Communication** — Giữa các service trong `/services/*`, giao tiếp qua gRPC hoặc REST với retry + circuit breaker. Không gọi trực tiếp internal functions.
+3. **Versioning** — APIs must be versioned (`/v1/`, `/v2/`). No breaking changes on an active version.
+4. **Rate Limiting & Pagination** — All public endpoints must have rate limiting. List endpoints must support pagination (cursor-based or offset-based).
+5. **Documentation** — All new endpoints must have an OpenAPI/Swagger spec. The agent should suggest writing a spec when creating new routes.
+6. **Cross-Service Communication** — Between services in `/services/*`, communicate via gRPC or REST with retry + circuit breaker. Never call internal functions directly.
 
-> Các skill này được lưu tại `/nexus-hub/skills/` và sẽ được mở rộng theo thời gian. Agent phải kiểm tra Hub trước khi áp dụng để dùng version mới nhất.
+> These skills are stored in `/nexus-hub/skills/` and will be expanded over time. The agent must check the Hub before applying to use the latest version.
 
 ---
 
@@ -263,22 +264,22 @@ Các Global Skills sau đây áp dụng cho **toàn bộ project** (mọi servic
 
 | #   | Rule                                                                                                  | Priority |
 | --- | ----------------------------------------------------------------------------------------------------- | -------- |
-| 1   | Nexus Hub là nguồn tri thức DUY NHẤT — luôn consult trước                                             | Critical |
-| 2   | Dùng `query_graph` kiểm tra cross-service dependencies trước khi code                                 | Critical |
+| 1   | Nexus Hub is the SINGLE source of truth — always consult first                                        | Critical |
+| 2   | Use `query_graph` to check cross-service dependencies before coding                                   | Critical |
 | 3   | Zero regression — stability of existing code comes first                                              | Critical |
 | 4   | Always search Hub + call `search_knowledge_base` before any suggestion                                | Required |
 | 5   | Each service owns its stack; no cross-service runtime mixing                                          | Required |
 | 6   | Global Skills (Security + API Design) apply to ALL sub-projects                                       | Required |
-| 7   | Khi thêm service mới vào `/services/`, gợi ý chạy `sync_service_knowledge`                            | Required |
+| 7   | When adding a new service to `/services/`, suggest running `sync_service_knowledge`                   | Required |
 | 8   | Clean Code + SOLID principles for all new code                                                        | Required |
-| 9   | Tuân thủ Git Flow — branch naming, Conventional Commits, PR trước khi merge                           | Required |
-| 10  | Mọi lệnh shell autopilot đều qua PreToolUse hook — không tự bypass `.github/hooks/safe-commands.json` | Required |
+| 9   | Follow Git Flow — branch naming, Conventional Commits, PR before merge                                | Required |
+| 10  | All autopilot shell commands go through PreToolUse hook — never bypass `.github/hooks/safe-commands.json` | Required |
 
 ---
 
 ## Git Flow & Conventional Commits
 
-> Agent phải tuân thủ Git Flow khi thực hiện git operations. **Không commit trực tiếp vào `master`/`main`** trừ khi được yêu cầu override tường minh.
+> The agent must follow Git Flow for all git operations. **Never commit directly to `master`/`main`** unless explicitly overridden by the user.
 
 ### Branch Model
 
