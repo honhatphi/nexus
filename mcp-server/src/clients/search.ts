@@ -48,9 +48,9 @@ async function keywordSearch(
     MATCH (n)
     WHERE (n:Function OR n:Class OR n:File)
       AND (
-        n.name =~ $pattern
-        OR n.file =~ $pattern
-        OR n.docstring =~ $pattern
+        toLower(n.name) CONTAINS toLower($pattern)
+        OR toLower(n.file) CONTAINS toLower($pattern)
+        OR toLower(coalesce(n.docstring, '')) CONTAINS toLower($pattern)
       )
     RETURN
       coalesce(n.name, '') AS name,
@@ -58,12 +58,11 @@ async function keywordSearch(
       coalesce(n.docstring, '') AS docstring,
       coalesce(n.service, '') AS service,
       labels(n)[0] AS label
-    LIMIT $limit
+    LIMIT ${Math.trunc(topK)}
   `;
 
   const rows = await memgraph.query(cypher, {
-    pattern: `(?i).*${escapedQuery}.*`,
-    limit: topK,
+    pattern: escapedQuery,
   });
 
   return rows.map((row) => ({

@@ -7,6 +7,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { MemgraphClient } from "../clients/memgraph.js";
+import { checkAllStaleness } from "./index.js";
 
 // ── get_process_flows Tool ───────────────────────────────────
 
@@ -39,44 +40,66 @@ export function registerProcessFlowsTool(
           ? "AND start.service = $service AND end.service = $service"
           : "";
 
-        // Forward traces: function → terminal
+        // Forward traces: function → leaf (no outgoing CALLS)
         const forwardTraces = await memgraph.query(
           `MATCH path = (start:Function {name: $name})-[:CALLS*1..${max_depth}]->(end:Function)
-           WHERE NOT (end)-[:CALLS]->(:Function)
-             AND start <> end
+           WHERE start <> end
              ${serviceFilter}
-           RETURN [n IN nodes(path) | n.name] AS steps,
-                  [n IN nodes(path) | n.file] AS files,
-                  length(path) AS depth
+           WITH path, end, size(nodes(path))-1 AS depth
+           OPTIONAL MATCH (end)-[:CALLS]->(next:Function)
+           WITH path, depth, next
+           WHERE next IS NULL
+           UNWIND nodes(path) AS n
+           WITH path, depth, collect(n.name) AS steps, collect(n.file) AS files
+           RETURN steps, files, depth
            ORDER BY depth DESC
            LIMIT 5`,
           { name: function_name, service: service ?? "" },
         );
 
-        // Backward traces: entry point → function
+        // Backward traces: entry point (no incoming CALLS) → function
         const backwardTraces = await memgraph.query(
           `MATCH path = (entry:Function)-[:CALLS*1..${max_depth}]->(target:Function {name: $name})
-           WHERE NOT ()-[:CALLS]->(entry)
-             AND entry <> target
+           WHERE entry <> target
              ${serviceFilter}
-           RETURN [n IN nodes(path) | n.name] AS steps,
-                  [n IN nodes(path) | n.file] AS files,
-                  length(path) AS depth
+           WITH path, entry, size(nodes(path))-1 AS depth
+           OPTIONAL MATCH (prev:Function)-[:CALLS]->(entry)
+           WITH path, depth, prev
+           WHERE prev IS NULL
+           UNWIND nodes(path) AS n
+           WITH path, depth, collect(n.name) AS steps, collect(n.file) AS files
+           RETURN steps, files, depth
            ORDER BY depth DESC
            LIMIT 5`,
           { name: function_name, service: service ?? "" },
         );
 
         // Check if function is a known process entry point
-        const processes = await memgraph.query(
-          `MATCH (p:Process {entryPoint: $name})
-           OPTIONAL MATCH (f:Function)-[r:STEP_IN_PROCESS]->(p)
-           RETURN p.name AS processName,
-                  p.stepCount AS stepCount,
-                  collect(f.name) AS members
-           ORDER BY p.stepCount DESC`,
-          { name: function_name },
-        );
+        let processes: Record<string, unknown>[] = [];
+        try {
+          const procs = await memgraph.query(
+            `MATCH (p:Process)
+             WHERE p.entryPoint = $name
+             RETURN p.name AS processName, p.stepCount AS stepCount`,
+            { name: function_name },
+          );
+          for (const proc of procs) {
+            const members = await memgraph.query(
+              `MATCH (f:Function)-[:STEP_IN_PROCESS]->(p:Process {name: $pname})
+               RETURN collect(f.name) AS members`,
+              { pname: proc.processName as string },
+            );
+            processes.push({
+              processName: proc.processName,
+              stepCount: proc.stepCount,
+              members: members[0]?.members ?? [],
+            });
+          }
+        } catch {
+          // Process nodes may not exist — not critical
+        }
+
+        const staleness = await checkAllStaleness(memgraph);
 
         return {
           content: [
@@ -101,6 +124,9 @@ export function registerProcessFlowsTool(
                     stepCount: p.stepCount,
                     members: p.members,
                   })),
+                  ...(staleness.length > 0
+                    ? { stalenessWarnings: staleness }
+                    : {}),
                 },
                 null,
                 2,

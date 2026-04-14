@@ -16,7 +16,7 @@ interface StalenessWarning {
   message: string;
 }
 
-async function checkAllStaleness(
+export async function checkAllStaleness(
   memgraph: MemgraphClient,
 ): Promise<StalenessWarning[]> {
   const warnings: StalenessWarning[] = [];
@@ -274,6 +274,83 @@ export function registerTools(
                   ...(staleness.length > 0
                     ? { stalenessWarnings: staleness }
                     : {}),
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: String(err) }),
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // ── 4. check_staleness ─────────────────────────────────────
+  server.tool(
+    "check_staleness",
+    "Check if the Knowledge Base is up-to-date with the latest code changes. Compares the last sync commit against git HEAD for each service. Call this after committing, merging, or pulling code to see if a re-sync is needed.",
+    {},
+    async () => {
+      try {
+        const staleness = await checkAllStaleness(memgraph);
+
+        if (staleness.length === 0) {
+          // Check if any services exist at all
+          const services = await memgraph.query(
+            `MATCH (s:Service) RETURN s.name AS name, s.lastSyncAt AS lastSync`,
+          );
+
+          if (services.length === 0) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    status: "no_services",
+                    message:
+                      "No services indexed yet. Run sync_service_knowledge to get started.",
+                  }),
+                },
+              ],
+            };
+          }
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  status: "up_to_date",
+                  message: "All service Knowledge Base data is current.",
+                  services: services.map((s) => ({
+                    name: s.name,
+                    lastSync: s.lastSync,
+                  })),
+                }),
+              },
+            ],
+          };
+        }
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  status: "stale",
+                  message: `${staleness.length} service(s) have stale KB data. Re-sync recommended.`,
+                  staleServices: staleness,
                 },
                 null,
                 2,

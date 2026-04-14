@@ -30,6 +30,7 @@ import { metadataPhase } from "./pipeline/phase-4-metadata.js";
 import { importResolutionPhase } from "./pipeline/phase-5-imports.js";
 import { heritagePhase } from "./pipeline/phase-6-heritage.js";
 import { communityPhase } from "./pipeline/phase-7-community.js";
+import { kafkaLinkagePhase } from "./pipeline/phase-8a-kafka-linkage.js";
 import { processTracingPhase } from "./pipeline/phase-8-process.js";
 import { typeResolutionPhase } from "./pipeline/phase-9-types.js";
 
@@ -120,6 +121,7 @@ export class SyncServiceKnowledge {
       .register(importResolutionPhase)
       .register(heritagePhase)
       .register(communityPhase)
+      .register(kafkaLinkagePhase)
       .register(processTracingPhase)
       .register(typeResolutionPhase);
   }
