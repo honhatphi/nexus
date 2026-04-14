@@ -7,7 +7,7 @@ Automated workflow when the agent receives a new feature request, ensuring **Zer
 ## Overview
 
 ```
-Request → Impact Analysis → Adapter Proposal → Write Tests (TDD) → Implement → Hooks Verify
+Request → Impact Analysis → Adapter Proposal → Write Tests → Implement → Hooks Verify
 ```
 
 ---
@@ -67,27 +67,24 @@ When the new feature needs to interact with `/src/legacy/**`:
 
 ---
 
-## Step 4 — Write Unit Tests First (TDD)
+## Step 4 — Write Tests & Implement
 
-Follow the **Red → Green → Refactor** cycle:
-
-### 4.1 — Red (Write failing tests)
+### 4.1 — Write tests first
 
 - Write tests for the new feature based on the spec from Step 1.
 - Write tests for the adapter (if any) to ensure it correctly wraps legacy behavior.
-- Run tests → **all must FAIL** (no implementation yet).
 
-### 4.2 — Green (Write minimal code)
+### 4.2 — Implement
 
 - Implement the feature in `/src/modules/v3/`.
 - Code only needs to be enough to make tests pass, no over-engineering.
 
-### 4.3 — Refactor
+### 4.3 — Verify
 
 - Improve code quality: naming, structure, remove duplication.
-- Re-run all tests → **must still PASS**.
+- Run all tests → **must PASS**.
 
-**Output:** Test files + implementation in Green Zone.
+**Output:** Test files + implementation.
 
 ---
 
@@ -146,9 +143,9 @@ pre-push
      └─────┬────┘
            ▼
 ┌─────────────────────┐
-│  4. TDD             │
-│  Red → Green →      │
-│  Refactor           │
+│  4. Write Tests     │
+│     + Implement     │
+│     + Verify        │
 └────────┬────────────┘
          ▼
 ┌─────────────────────┐

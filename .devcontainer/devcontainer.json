@@ -15,7 +15,7 @@
   "forwardPorts": [3100, 3000, 7687, 8000],
   "portsAttributes": {
     "3100": { "label": "MCP Server", "onAutoForward": "notify" },
-    "3000": { "label": "Memgraph Lab", "onAutoForward": "openBrowser" },
+    "3000": { "label": "Memgraph Lab", "onAutoForward": "silent" },
     "7687": { "label": "Memgraph Bolt", "onAutoForward": "silent" },
     "8000": { "label": "ChromaDB", "onAutoForward": "silent" }
   },

@@ -4,6 +4,7 @@ services:
     build:
       context: .
       dockerfile: .devcontainer/Dockerfile
+    init: true
     volumes:
       - .:/workspace:cached
       - node_modules_common:/workspace/nexus-hub/common-tools/node_modules

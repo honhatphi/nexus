@@ -7,6 +7,11 @@ import { ChromaDBClient } from "./clients/chromadb.js";
 import { registerTools } from "./tools/index.js";
 import { registerParserTool } from "./tools/parse-code.js";
 import { registerSyncTool } from "./tools/sync-service.js";
+import { registerDetectChangesTool } from "./tools/detect-changes.js";
+import {
+  registerProcessFlowsTool,
+  registerResources,
+} from "./tools/resources.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -34,6 +39,9 @@ async function main(): Promise<void> {
       registerTools(server, memgraph, chromadb);
       registerParserTool(server);
       registerSyncTool(server, memgraph, chromadb);
+      registerDetectChangesTool(server, memgraph);
+      registerProcessFlowsTool(server, memgraph);
+      registerResources(server, memgraph);
 
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
