@@ -279,24 +279,12 @@ The following Global Skills apply to the **entire project** (all services in `/s
 
 ## Git Flow & Conventional Commits
 
-> The agent must follow Git Flow for all git operations. **Never commit directly to `master`/`main`** unless explicitly overridden by the user.
+> Full workflow is defined in `.github/agents/git-manager.agent.md`. Use the **Git Manager** agent for all commit/push tasks.
 
-### Branch Model
+### Rules (apply to all agents)
 
-```
-master  ─────────────────────────────────────── production-ready
-           ↑ PR merge only
-develop ─────────────────────────────────────── integration (optional for solo)
-           ↑ PR merge only
-feature/<name>   ─ new features
-fix/<name>       ─ bug fixes
-hotfix/<name>    ─ urgent production fixes (branch off master)
-chore/<name>     ─ maintenance, deps, tooling
-docs/<name>      ─ documentation only
-refactor/<name>  ─ code restructure without behavior change
-```
-
-**Branch naming rules:**
+- **Never commit directly to `master`/`main`** — always branch first.
+- Branch naming: lowercase, hyphen-separated. Types: `feature/`, `fix/`, `hotfix/`, `chore/`, `docs/`, `refactor/`.
 
 - Lowercase, hyphen-separated: `feature/add-search-endpoint`, `fix/memgraph-dns`
 - No uppercase, no underscores, no spaces
@@ -310,69 +298,6 @@ refactor/<name>  ─ code restructure without behavior change
 [optional body — explain WHY, not WHAT]
 
 [optional footer — BREAKING CHANGE: ..., Closes #123]
-```
-
-**Types:**
-| Type | When to use |
-|------|-------------|
-| `feat` | New feature or capability |
-| `fix` | Bug fix |
-| `chore` | Tooling, config, maintenance (no production code change) |
-| `docs` | Documentation only |
-| `refactor` | Code change that neither fixes a bug nor adds a feature |
-| `test` | Adding or updating tests |
-| `ci` | CI/CD pipeline changes |
-| `perf` | Performance improvement |
-| `style` | Formatting, whitespace (no logic change) |
-| `revert` | Reverts a previous commit |
-
-**Scopes for this project:**
-| Scope | What it covers |
-|-------|---------------|
-| `devcontainer` | `.devcontainer/` — Docker dev environment |
-| `mcp-server` | `/mcp-server/` — MCP tool gateway |
-| `common-tools` | `/nexus-hub/common-tools/` — Parser & sync engine |
-| `nexus-hub` | `/nexus-hub/knowledge-base|patterns|skills|prompts/` |
-| `infra` | `docker-compose.yml`, infrastructure config |
-| `workspace` | `nexus.code-workspace`, `.vscode/` settings |
-| `deps` | Dependency upgrades |
-| `release` | Version bumps, changelog |
-| `agents` | Agent JSON configs |
-| `workflows` | Agentic workflow docs |
-
-**Examples:**
-
-```bash
-feat(mcp-server): add GET /v1/impact endpoint
-fix(devcontainer): correct memgraph container DNS to bolt://memgraph:7687
-chore(deps): upgrade npm to 11.12.1
-chore(workspace): remove duplicate settings from devcontainer.json
-docs(nexus-hub): add api-design pattern to knowledge-base
-refactor(common-tools): extract language detection to separate module
-ci(infra): add healthcheck to chromadb in docker-compose
-```
-
-### Agent Git Workflow
-
-When asked to commit or push, agent MUST follow this sequence:
-
-1. **Check branch** — `git branch --show-current`. If on `master`/`main`, create a feature branch first.
-2. **Review changes** — `git diff --stat` to understand what changed.
-3. **Group changes** — separate commits by scope/type. Do NOT mix feat + chore in one commit.
-4. **Stage selectively** — `git add <specific files>`, not `git add -A` blindly.
-5. **Compose message** — follow Conventional Commits format above.
-6. **Commit** — validate message matches the hook pattern.
-7. **Push** — `git push -u origin <branch>`.
-
-### Breaking Changes
-
-If a commit introduces a breaking change to any public API or contract:
-
-```
-feat(mcp-server)!: change tool response format to envelope pattern
-
-BREAKING CHANGE: All tool responses now wrapped in { data, error, meta }.
-Clients must update response parsing.
 ```
 
 ### Git Hooks (auto-enforced)
