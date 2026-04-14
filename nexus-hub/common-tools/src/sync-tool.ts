@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────
-// sync_service_knowledge — Scan a service folder, parse every
-// source file, and upsert the extracted knowledge into Memgraph
-// (graph) and ChromaDB (vectors).
+// sync_service_knowledge — Thin wrapper around PipelineEngine.
+// Maintains backward-compatible API while delegating to the
+// multi-phase pipeline architecture.
 //
 // Usage:
 //   const tool = new SyncServiceKnowledge({ memgraph: { uri }, chromadb: { url } });
@@ -9,15 +9,29 @@
 //   await tool.close();
 // ─────────────────────────────────────────────────────────────
 
-import fs from "node:fs/promises";
 import path from "node:path";
-import crypto from "node:crypto";
+import fs from "node:fs/promises";
 import neo4j, { type Driver, type Session } from "neo4j-driver";
 import { ChromaClient, type Collection, type Metadata } from "chromadb";
 
 import { CodeParser } from "./universal-parser.js";
-import { EXTENSION_MAP } from "./types.js";
-import type { ParseResult, SymbolInfo, DagInfo, DagTaskInfo } from "./types.js";
+import { PipelineEngine } from "./pipeline/index.js";
+import { createEmptyContext } from "./pipeline/types.js";
+import type {
+  PipelineReport,
+  GraphClient,
+  VectorClient,
+} from "./pipeline/types.js";
+import { filesystemPhase } from "./pipeline/phase-0-filesystem.js";
+import { parsePhase } from "./pipeline/phase-1-parse.js";
+import { graphUpsertPhase } from "./pipeline/phase-2-graph.js";
+import { vectorUpsertPhase } from "./pipeline/phase-3-vectors.js";
+import { metadataPhase } from "./pipeline/phase-4-metadata.js";
+import { importResolutionPhase } from "./pipeline/phase-5-imports.js";
+import { heritagePhase } from "./pipeline/phase-6-heritage.js";
+import { communityPhase } from "./pipeline/phase-7-community.js";
+import { processTracingPhase } from "./pipeline/phase-8-process.js";
+import { typeResolutionPhase } from "./pipeline/phase-9-types.js";
 
 // ─────────────────────────────────────────────────────────────
 // Configuration
@@ -37,7 +51,7 @@ export interface SyncToolConfig {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Result Types
+// Result Types (backward-compatible)
 // ─────────────────────────────────────────────────────────────
 
 export interface SyncReport {
@@ -54,56 +68,12 @@ export interface SyncReport {
     languages: string[];
   };
   errors: string[];
+  /** Extended pipeline report (new in v1.0). */
+  pipelineReport?: PipelineReport;
 }
 
 // ─────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────
-
-const SKIP_DIRS = new Set([
-  "node_modules",
-  ".git",
-  "vendor",
-  "dist",
-  "__pycache__",
-  ".venv",
-  "build",
-]);
-const SOURCE_EXTENSIONS = new Set(Object.keys(EXTENSION_MAP));
-
-async function collectSourceFiles(dir: string): Promise<string[]> {
-  const files: string[] = [];
-  const entries = await fs.readdir(dir, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (SKIP_DIRS.has(entry.name)) continue;
-      files.push(...(await collectSourceFiles(fullPath)));
-    } else if (entry.isFile()) {
-      const ext = path.extname(entry.name).toLowerCase();
-      if (SOURCE_EXTENSIONS.has(ext)) {
-        files.push(fullPath);
-      }
-    }
-  }
-  return files;
-}
-
-function contentHash(content: string): string {
-  return crypto.createHash("sha256").update(content).digest("hex").slice(0, 16);
-}
-
-function buildSignature(sym: SymbolInfo): string {
-  const params = sym.params
-    .map((p) => (p.type ? `${p.name}: ${p.type}` : p.name))
-    .join(", ");
-  const ret = sym.returnType ? ` → ${sym.returnType}` : "";
-  return `${sym.name}(${params})${ret}`;
-}
-
-// ─────────────────────────────────────────────────────────────
-// SyncServiceKnowledge
+// SyncServiceKnowledge — Pipeline-backed
 // ─────────────────────────────────────────────────────────────
 
 export class SyncServiceKnowledge {
@@ -112,7 +82,7 @@ export class SyncServiceKnowledge {
   private collectionName: string;
   private collection: Collection | null = null;
   private parser: CodeParser;
-  private hashCache = new Map<string, string>();
+  private pipeline: PipelineEngine;
 
   constructor(config: SyncToolConfig) {
     // ── Memgraph ──
@@ -138,6 +108,20 @@ export class SyncServiceKnowledge {
 
     // ── Parser ──
     this.parser = new CodeParser();
+
+    // ── Pipeline ──
+    this.pipeline = new PipelineEngine();
+    this.pipeline
+      .register(filesystemPhase)
+      .register(parsePhase)
+      .register(graphUpsertPhase)
+      .register(vectorUpsertPhase)
+      .register(metadataPhase)
+      .register(importResolutionPhase)
+      .register(heritagePhase)
+      .register(communityPhase)
+      .register(processTracingPhase)
+      .register(typeResolutionPhase);
   }
 
   // ── Public API ───────────────────────────────────────────
@@ -147,465 +131,104 @@ export class SyncServiceKnowledge {
     const serviceName = path.basename(absPath);
 
     // Validate
-    const stat = await fs.stat(absPath);
-    if (!stat.isDirectory()) {
+    try {
+      const stat = await fs.stat(absPath);
+      if (!stat.isDirectory()) {
+        return this.errorReport(
+          serviceName,
+          absPath,
+          `${absPath} is not a directory.`,
+        );
+      }
+    } catch {
       return this.errorReport(
         serviceName,
         absPath,
-        `${absPath} is not a directory.`,
+        `${absPath} does not exist.`,
       );
     }
 
-    const sourceFiles = await collectSourceFiles(absPath);
-    if (sourceFiles.length === 0) {
-      return this.errorReport(
-        serviceName,
-        absPath,
-        "No supported source files found.",
-      );
-    }
+    // Build pipeline dependencies
+    const graphClient = this.createGraphClient();
+    const vectorClient = await this.createVectorClient();
 
-    let filesScanned = 0;
-    let filesSkipped = 0;
-    let totalSymbols = 0;
-    let totalRelationships = 0;
-    let totalVectors = 0;
-    const languagesSeen = new Set<string>();
-    const errors: string[] = [];
+    const ctx = createEmptyContext(serviceName, absPath, forceUpdate);
 
-    for (const filePath of sourceFiles) {
-      const content = await fs.readFile(filePath, "utf-8");
+    const pipelineReport = await this.pipeline.run(ctx, {
+      graph: graphClient,
+      vectors: vectorClient,
+      parser: this.parser,
+    });
 
-      // Staleness check
-      if (!forceUpdate && !this.isChanged(filePath, content)) {
-        filesSkipped++;
-        continue;
-      }
-
-      const parseResult = await this.parser.parseSource(filePath, content);
-      const relPath = path.relative(absPath, filePath);
-      parseResult.file = `${serviceName}/${relPath}`;
-      languagesSeen.add(parseResult.language);
-      filesScanned++;
-
-      if (parseResult.parseErrors.length > 0) {
-        errors.push(...parseResult.parseErrors.map((e) => `${relPath}: ${e}`));
-      }
-
-      // ── DAG Upsert (YAML files) ──
-      if (parseResult.dags.length > 0) {
-        const dagResult = await this.upsertDagsToGraph(
-          serviceName,
-          parseResult,
-        );
-        totalSymbols += dagResult.nodesUpserted;
-        totalRelationships += dagResult.relsCreated;
-
-        const dagVectors = await this.upsertDagsToVector(
-          serviceName,
-          parseResult,
-        );
-        totalVectors += dagVectors;
-      }
-
-      if (parseResult.symbols.length === 0 && parseResult.dags.length === 0)
-        continue;
-
-      // ── Graph Upsert (code symbols) ──
-      if (parseResult.symbols.length > 0) {
-        const graphResult = await this.upsertToGraph(serviceName, parseResult);
-        totalSymbols += graphResult.nodesUpserted;
-        totalRelationships += graphResult.relsCreated;
-      }
-
-      // ── Vector Upsert (code symbols) ──
-      if (parseResult.symbols.length > 0) {
-        const vectorCount = await this.upsertToVector(serviceName, parseResult);
-        totalVectors += vectorCount;
-      }
-    }
-
-    const languages = [...languagesSeen];
+    // Map to backward-compatible SyncReport
     return {
-      service: serviceName,
-      path: absPath,
-      success: true,
-      summary: `Đã nạp ${totalSymbols} hàm, ${totalRelationships} quan hệ mới, ${totalVectors} vectors. Ngôn ngữ: ${languages.join(", ") || "none"}.`,
+      service: pipelineReport.service,
+      path: pipelineReport.path,
+      success: pipelineReport.errors.length === 0,
+      summary: pipelineReport.summary,
       details: {
-        filesScanned,
-        filesSkipped,
-        totalSymbols,
-        totalRelationships,
-        totalVectors,
-        languages,
+        filesScanned: pipelineReport.details.filesScanned,
+        filesSkipped: pipelineReport.details.filesSkipped,
+        totalSymbols: pipelineReport.details.totalSymbols,
+        totalRelationships: pipelineReport.details.totalRelationships,
+        totalVectors: pipelineReport.details.totalVectors,
+        languages: pipelineReport.details.languages,
       },
-      errors,
+      errors: pipelineReport.errors,
+      pipelineReport,
     };
   }
-
   async close(): Promise<void> {
     await this.driver.close();
   }
 
-  // ── Graph Operations ─────────────────────────────────────
+  // ── Private Helpers ──────────────────────────────────────
 
-  private async graphWrite(
-    cypher: string,
-    params: Record<string, unknown> = {},
-  ): Promise<void> {
-    const session: Session = this.driver.session({
-      defaultAccessMode: neo4j.session.WRITE,
-    });
-    try {
-      await session.run(cypher, params);
-    } finally {
-      await session.close();
-    }
+  private createGraphClient(): GraphClient {
+    const driver = this.driver;
+    return {
+      async write(cypher: string, params: Record<string, unknown> = {}) {
+        const session: Session = driver.session({
+          defaultAccessMode: neo4j.session.WRITE,
+        });
+        try {
+          const result = await session.run(cypher, params);
+          return result.records.map(
+            (r) => r.toObject() as Record<string, unknown>,
+          );
+        } finally {
+          await session.close();
+        }
+      },
+      async query(cypher: string, params: Record<string, unknown> = {}) {
+        const session: Session = driver.session({
+          defaultAccessMode: neo4j.session.READ,
+        });
+        try {
+          const result = await session.run(cypher, params);
+          return result.records.map(
+            (r) => r.toObject() as Record<string, unknown>,
+          );
+        } finally {
+          await session.close();
+        }
+      },
+    };
   }
 
-  private async upsertToGraph(
-    serviceName: string,
-    result: ParseResult,
-  ): Promise<{ nodesUpserted: number; relsCreated: number }> {
-    let nodesUpserted = 0;
-    let relsCreated = 0;
-
-    // Service node
-    await this.graphWrite(`MERGE (s:Service {name: $service})`, {
-      service: serviceName,
-    });
-
-    // File node + CONTAINS edge from Service
-    await this.graphWrite(
-      `MERGE (fi:File {path: $file})
-       MERGE (s:Service {name: $service})
-       MERGE (s)-[:CONTAINS]->(fi)
-       SET fi.language = $language, fi.updatedAt = timestamp()`,
-      { file: result.file, service: serviceName, language: result.language },
-    );
-
-    for (const sym of result.symbols) {
-      const signature = buildSignature(sym);
-
-      // Function node + CONTAINS edge from File
-      await this.graphWrite(
-        `MERGE (f:Function {name: $name, file: $file, service: $service})
-         SET f.kind       = $kind,
-             f.language   = $language,
-             f.returnType = $returnType,
-             f.startLine  = $startLine,
-             f.endLine    = $endLine,
-             f.signature  = $signature,
-             f.docstring  = $docstring,
-             f.updatedAt  = timestamp()
-         WITH f
-         MERGE (fi:File {path: $file})
-         MERGE (fi)-[:CONTAINS]->(f)`,
-        {
-          name: sym.name,
-          file: result.file,
-          service: serviceName,
-          kind: sym.kind,
-          language: result.language,
-          returnType: sym.returnType ?? "",
-          startLine: sym.startLine,
-          endLine: sym.endLine,
-          signature,
-          docstring: sym.docstring ?? "",
-        },
-      );
-      nodesUpserted++;
-
-      // CALLS edges
-      for (const call of sym.calls) {
-        await this.graphWrite(
-          `MERGE (caller:Function {name: $callerName, file: $callerFile, service: $service})
-           MERGE (callee:Function {name: $calleeName})
-           MERGE (caller)-[r:CALLS]->(callee)
-           SET r.line = $line, r.updatedAt = timestamp()`,
-          {
-            callerName: sym.name,
-            callerFile: result.file,
-            service: serviceName,
-            calleeName: call.name,
-            line: call.line,
-          },
-        );
-        relsCreated++;
-      }
-    }
-
-    return { nodesUpserted, relsCreated };
-  }
-
-  // ── Vector Operations ────────────────────────────────────
-
-  private async getCollection(): Promise<Collection> {
+  private async createVectorClient(): Promise<VectorClient> {
     if (!this.collection) {
       this.collection = await this.chromaClient.getOrCreateCollection({
         name: this.collectionName,
       });
     }
-    return this.collection;
+    const collection = this.collection;
+    return {
+      async upsert(ids, documents, metadatas) {
+        await collection.upsert({ ids, documents, metadatas });
+      },
+    };
   }
-
-  private async upsertToVector(
-    serviceName: string,
-    result: ParseResult,
-  ): Promise<number> {
-    if (result.symbols.length === 0) return 0;
-
-    const ids: string[] = [];
-    const documents: string[] = [];
-    const metadatas: Metadata[] = [];
-
-    for (const sym of result.symbols) {
-      const id = `${serviceName}::${result.file}::${sym.name}`;
-      const signature = buildSignature(sym);
-      const callsList = sym.calls.map((c) => c.name).join(", ");
-      const doc = [
-        `[${result.language}] ${signature}`,
-        `Kind: ${sym.kind}`,
-        `File: ${result.file}`,
-        `Lines: ${sym.startLine}-${sym.endLine}`,
-        sym.docstring ? `Doc: ${sym.docstring}` : "",
-        callsList ? `Calls: ${callsList}` : "",
-      ]
-        .filter(Boolean)
-        .join("\n");
-
-      ids.push(id);
-      documents.push(doc);
-      metadatas.push({
-        service: serviceName,
-        file: result.file,
-        language: result.language,
-        symbolName: sym.name,
-        kind: sym.kind,
-        startLine: sym.startLine,
-        endLine: sym.endLine,
-      });
-    }
-
-    const collection = await this.getCollection();
-    await collection.upsert({ ids, documents, metadatas });
-    return ids.length;
-  }
-
-  // ── DAG Graph Operations ─────────────────────────────────
-
-  private async upsertDagsToGraph(
-    serviceName: string,
-    result: ParseResult,
-  ): Promise<{ nodesUpserted: number; relsCreated: number }> {
-    let nodesUpserted = 0;
-    let relsCreated = 0;
-
-    for (const dag of result.dags) {
-      // DAG node
-      await this.graphWrite(
-        `MERGE (d:DAG {name: $dagName, service: $service})
-         SET d.file            = $file,
-             d.scheduleInterval = $schedule,
-             d.description     = $description,
-             d.owner           = $owner,
-             d.concurrency     = $concurrency,
-             d.updatedAt       = timestamp()
-         WITH d
-         MERGE (s:Service {name: $service})
-         MERGE (s)-[:CONTAINS]->(d)`,
-        {
-          dagName: dag.name,
-          service: serviceName,
-          file: result.file,
-          schedule: dag.scheduleInterval ?? "",
-          description: dag.description ?? "",
-          owner: dag.owner ?? "",
-          concurrency: dag.concurrency ?? 0,
-        },
-      );
-      nodesUpserted++;
-
-      // File node
-      await this.graphWrite(
-        `MERGE (fi:File {path: $file})
-         MERGE (s:Service {name: $service})
-         MERGE (s)-[:CONTAINS]->(fi)
-         SET fi.language = $language, fi.updatedAt = timestamp()`,
-        { file: result.file, service: serviceName, language: result.language },
-      );
-
-      for (const task of dag.tasks) {
-        // Task node + BELONGS_TO DAG
-        await this.graphWrite(
-          `MERGE (t:Task {name: $taskName, dag: $dagName, service: $service})
-           SET t.operator              = $operator,
-               t.pythonCallableFile    = $pyFile,
-               t.pythonCallableName    = $pyName,
-               t.bashCommand           = $bashCmd,
-               t.sql                   = $sql,
-               t.postgresConnId        = $pgConnId,
-               t.retries               = $retries,
-               t.executionTimeoutSecs  = $timeout,
-               t.file                  = $file,
-               t.updatedAt             = timestamp()
-           WITH t
-           MERGE (d:DAG {name: $dagName, service: $service})
-           MERGE (t)-[:BELONGS_TO]->(d)`,
-          {
-            taskName: task.name,
-            dagName: dag.name,
-            service: serviceName,
-            operator: task.operator,
-            pyFile: task.pythonCallableFile ?? "",
-            pyName: task.pythonCallableName ?? "",
-            bashCmd: task.bashCommand ?? "",
-            sql: task.sql ?? "",
-            pgConnId: task.postgresConnId ?? "",
-            retries: task.retries ?? 0,
-            timeout: task.executionTimeoutSecs ?? 0,
-            file: result.file,
-          },
-        );
-        nodesUpserted++;
-
-        // DEPENDS_ON edges (task → upstream task)
-        for (const dep of task.dependencies) {
-          await this.graphWrite(
-            `MERGE (t:Task {name: $taskName, dag: $dagName, service: $service})
-             MERGE (upstream:Task {name: $depName, dag: $dagName, service: $service})
-             MERGE (t)-[r:DEPENDS_ON]->(upstream)
-             SET r.updatedAt = timestamp()`,
-            {
-              taskName: task.name,
-              dagName: dag.name,
-              service: serviceName,
-              depName: dep,
-            },
-          );
-          relsCreated++;
-        }
-
-        // INVOKES edge: PythonOperator task → Python function
-        if (task.pythonCallableName) {
-          await this.graphWrite(
-            `MERGE (t:Task {name: $taskName, dag: $dagName, service: $service})
-             MERGE (f:Function {name: $funcName})
-             MERGE (t)-[r:INVOKES]->(f)
-             SET r.callableFile = $pyFile, r.updatedAt = timestamp()`,
-            {
-              taskName: task.name,
-              dagName: dag.name,
-              service: serviceName,
-              funcName: task.pythonCallableName,
-              pyFile: task.pythonCallableFile ?? "",
-            },
-          );
-          relsCreated++;
-        }
-      }
-    }
-
-    return { nodesUpserted, relsCreated };
-  }
-
-  // ── DAG Vector Operations ────────────────────────────────
-
-  private async upsertDagsToVector(
-    serviceName: string,
-    result: ParseResult,
-  ): Promise<number> {
-    if (result.dags.length === 0) return 0;
-
-    const ids: string[] = [];
-    const documents: string[] = [];
-    const metadatas: Metadata[] = [];
-
-    for (const dag of result.dags) {
-      // Vector for the DAG itself
-      const dagId = `${serviceName}::${result.file}::dag::${dag.name}`;
-      const taskList = dag.tasks.map((t) => t.name).join(", ");
-      const dagDoc = [
-        `[yaml] DAG: ${dag.name}`,
-        `File: ${result.file}`,
-        dag.description ? `Description: ${dag.description}` : "",
-        dag.scheduleInterval ? `Schedule: ${dag.scheduleInterval}` : "",
-        `Tasks: ${taskList}`,
-      ]
-        .filter(Boolean)
-        .join("\n");
-
-      ids.push(dagId);
-      documents.push(dagDoc);
-      metadatas.push({
-        service: serviceName,
-        file: result.file,
-        language: "yaml",
-        functionName: dag.name,
-        kind: "dag",
-        startLine: 0,
-        endLine: 0,
-      });
-
-      // Vector for each task
-      for (const task of dag.tasks) {
-        const taskId = `${serviceName}::${result.file}::task::${task.name}`;
-        const deps =
-          task.dependencies.length > 0
-            ? `Dependencies: ${task.dependencies.join(", ")}`
-            : "";
-        const operatorShort = task.operator.split(".").pop() ?? task.operator;
-
-        const taskDoc = [
-          `[yaml] Task: ${task.name} (${operatorShort})`,
-          `DAG: ${dag.name}`,
-          `File: ${result.file}`,
-          `Operator: ${task.operator}`,
-          task.pythonCallableName ? `Calls: ${task.pythonCallableName}` : "",
-          task.pythonCallableFile
-            ? `Callable file: ${task.pythonCallableFile}`
-            : "",
-          task.bashCommand ? `Bash command: ${task.bashCommand}` : "",
-          task.sql ? `SQL: ${task.sql}` : "",
-          task.postgresConnId
-            ? `Postgres connection: ${task.postgresConnId}`
-            : "",
-          deps,
-          task.opKwargs ? `Op kwargs: ${JSON.stringify(task.opKwargs)}` : "",
-        ]
-          .filter(Boolean)
-          .join("\n");
-
-        ids.push(taskId);
-        documents.push(taskDoc);
-        metadatas.push({
-          service: serviceName,
-          file: result.file,
-          language: "yaml",
-          functionName: task.name,
-          kind: "task",
-          startLine: 0,
-          endLine: 0,
-          hasInfra: !!(task.postgresConnId || task.bashCommand),
-        });
-      }
-    }
-
-    const collection = await this.getCollection();
-    await collection.upsert({ ids, documents, metadatas });
-    return ids.length;
-  }
-
-  // ── Staleness Check ──────────────────────────────────────
-
-  private isChanged(filePath: string, content: string): boolean {
-    const newHash = contentHash(content);
-    const oldHash = this.hashCache.get(filePath);
-    this.hashCache.set(filePath, newHash);
-    return oldHash !== newHash;
-  }
-
-  // ── Error Helper ─────────────────────────────────────────
 
   private errorReport(
     service: string,

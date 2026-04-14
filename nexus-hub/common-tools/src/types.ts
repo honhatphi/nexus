@@ -9,6 +9,8 @@ export type SupportedLanguage =
   | "python"
   | "php"
   | "typescript"
+  | "javascript"
+  | "java"
   | "csharp"
   | "yaml";
 
@@ -18,6 +20,11 @@ export const EXTENSION_MAP: Record<string, SupportedLanguage> = {
   ".php": "php",
   ".ts": "typescript",
   ".tsx": "typescript",
+  ".js": "javascript",
+  ".jsx": "javascript",
+  ".mjs": "javascript",
+  ".cjs": "javascript",
+  ".java": "java",
   ".cs": "csharp",
   ".yml": "yaml",
   ".yaml": "yaml",

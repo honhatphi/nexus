@@ -26,6 +26,14 @@ stop_service() {
   local pid
   pid=$(cat "$pidfile" 2>/dev/null) || return 0
 
+  # Skip zombies — they can't be killed, only reaped by init
+  local state
+  state=$(ps -p "$pid" -o state= 2>/dev/null || echo "")
+  if [[ "$state" == Z* ]]; then
+    rm -f "$pidfile"
+    return 0
+  fi
+
   if kill -0 "$pid" 2>/dev/null; then
     kill "$pid" 2>/dev/null || true
     # Wait for graceful shutdown
@@ -56,6 +64,9 @@ start_service() {
   fi
 
   (
+    # Ignore SIGHUP so supervisor survives parent shell exit / VS Code reconnect
+    trap '' HUP
+
     _child=0
     _cleanup() {
       [ "$_child" -ne 0 ] && kill "$_child" 2>/dev/null
@@ -74,6 +85,7 @@ start_service() {
     done
   ) >> "$logfile" 2>&1 &
   echo $! > "$pidfile"
+  disown $! 2>/dev/null || true
 }
 
 wait_tcp() {
