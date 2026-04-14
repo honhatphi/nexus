@@ -8,6 +8,8 @@ import { registerTools } from "./tools/index.js";
 import { registerParserTool } from "./tools/parse-code.js";
 import { registerSyncTool } from "./tools/sync-service.js";
 import { registerDetectChangesTool } from "./tools/detect-changes.js";
+import { registerContextTool } from "./tools/context.js";
+import { registerAugmentTool } from "./tools/augment.js";
 import {
   registerProcessFlowsTool,
   registerResources,
@@ -40,6 +42,8 @@ async function main(): Promise<void> {
       registerParserTool(server);
       registerSyncTool(server, memgraph, chromadb);
       registerDetectChangesTool(server, memgraph);
+      registerContextTool(server, memgraph);
+      registerAugmentTool(server, memgraph);
       registerProcessFlowsTool(server, memgraph);
       registerResources(server, memgraph);
 

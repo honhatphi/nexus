@@ -30,9 +30,9 @@ export const processTracingPhase: PipelinePhase = {
     // 1. Detect entry points — functions with many outgoing CALLS but few incoming
     const candidates = await deps.graph.query(
       `MATCH (f:Function {service: $service})
-       OPTIONAL MATCH (f)-[:CALLS]->()
+       OPTIONAL MATCH (f)-[:CALLS|ASYNC_TRIGGERS]->()
        WITH f, count(*) AS outgoing
-       OPTIONAL MATCH ()-[:CALLS]->(f)
+       OPTIONAL MATCH ()-[:CALLS|ASYNC_TRIGGERS]->(f)
        WITH f, outgoing, count(*) AS incoming
        WHERE outgoing > 0 AND incoming <= 1
        RETURN f.name AS name, f.file AS file,
@@ -76,8 +76,8 @@ export const processTracingPhase: PipelinePhase = {
         // Find paths from entry to terminal functions (no further outgoing CALLS)
         const traces = await deps.graph.query(
           `MATCH path = (start:Function {name: $name, file: $file, service: $service})
-                 -[:CALLS*1..${MAX_TRACE_DEPTH}]->(end:Function)
-           WHERE NOT (end)-[:CALLS]->(:Function {service: $service})
+                 -[:CALLS|ASYNC_TRIGGERS*1..${MAX_TRACE_DEPTH}]->(end:Function)
+           WHERE NOT (end)-[:CALLS|ASYNC_TRIGGERS]->(:Function {service: $service})
              AND start <> end
            RETURN [n IN nodes(path) | n.name] AS steps,
                   [n IN nodes(path) | n.file] AS files,
