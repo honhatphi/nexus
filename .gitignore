@@ -21,8 +21,8 @@ Thumbs.db
 *.swp
 *.swo
 
-# Services (local-only codebases, managed by separate repos)
-# services/
+# Services (local-only codebases, not part of Nexus source)
+services/
 
 # Docker volumes
 memgraph_data/
