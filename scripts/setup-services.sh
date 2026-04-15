@@ -4,13 +4,11 @@
 #
 # Mỗi service trong /services/* là 1 git repo độc lập (GitLab) — KHÔNG thuộc
 # Nexus GitHub repo. Script này đọc nexus-config.yaml, tìm service có khai báo
-# git.remote và init/clone nó.
+# git.ssh và init/clone nó.
 #
 # Usage:
 #   bash scripts/setup-services.sh               # setup all services
 #   bash scripts/setup-services.sh warehouse-2.0 # setup 1 service cụ thể
-#
-# Requirements: git, python3 (để parse YAML đơn giản)
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -23,92 +21,109 @@ echo "   Config: $CONFIG_FILE"
 echo "   Target: ${TARGET_SERVICE:-all services}"
 echo ""
 
-# Parse nexus-config.yaml và setup từng service có khai báo git.remote
-python3 - "$CONFIG_FILE" "$TARGET_SERVICE" << 'PYEOF'
-import sys
-import os
-import subprocess
+node - "$CONFIG_FILE" "$TARGET_SERVICE" "$WORKSPACE_DIR" << 'NODEJS'
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
 
-config_path = sys.argv[1]
-target = sys.argv[2] if len(sys.argv) > 2 else ""
+const configPath = process.argv[2];
+const target = process.argv[3] || '';
+const workspaceDir = process.argv[4];
 
-# Parse YAML thủ công cho cấu trúc đơn giản (không cần PyYAML)
-try:
-    import yaml
-    with open(config_path) as f:
-        config = yaml.safe_load(f)
-except ImportError:
-    # Fallback: dùng re để parse
-    import re
-    print("⚠️  PyYAML không có, dùng parser đơn giản")
-    config = None
+// ── Simple YAML parser ──
+function parseServices(content) {
+  const services = [];
+  const lines = content.split('\n');
+  let inServices = false, current = null, inGit = false;
 
-if config is None:
-    print("❌ Không parse được nexus-config.yaml. Cài: pip install pyyaml")
-    sys.exit(1)
+  for (const line of lines) {
+    if (line.match(/^services:\s*$/)) { inServices = true; continue; }
+    if (inServices && line.match(/^[a-z#]/) && !line.match(/^\s/)) { inServices = false; }
+    if (!inServices) continue;
 
-services = config.get("services", [])
-workspace_dir = os.path.dirname(os.path.abspath(config_path))
+    if (line.match(/^\s{2}- name:\s*/)) {
+      if (current) services.push(current);
+      current = {
+        name: line.replace(/^\s{2}- name:\s*/, '').trim().replace(/["']/g, ''),
+        path: '', ssh: '', default_branch: 'master'
+      };
+      inGit = false;
+      continue;
+    }
+    if (!current) continue;
 
-for svc in services:
-    name = svc.get("name", "")
-    if target and name != target:
-        continue
+    const trimmed = line.trimStart();
+    if (trimmed.startsWith('path:')) { current.path = trimmed.replace('path:', '').trim().replace(/["']/g, ''); inGit = false; }
+    else if (trimmed.startsWith('git:')) { inGit = true; }
+    else if (inGit && trimmed.startsWith('ssh:')) { current.ssh = trimmed.replace('ssh:', '').trim().replace(/["']/g, '').replace(/#.*/, '').trim(); }
+    else if (inGit && trimmed.startsWith('remote:')) { current.ssh = current.ssh || trimmed.replace('remote:', '').trim().replace(/["']/g, '').replace(/#.*/, '').trim(); }
+    else if (inGit && trimmed.startsWith('default_branch:')) { current.default_branch = trimmed.replace('default_branch:', '').trim().replace(/["']/g, ''); }
+    else if (trimmed.match(/^\w/) && !trimmed.startsWith('-')) { inGit = false; }
+  }
+  if (current) services.push(current);
+  return services;
+}
 
-    git_cfg = svc.get("git", {})
-    remote = (git_cfg.get("ssh") or git_cfg.get("remote") or "").strip()
-    default_branch = git_cfg.get("default_branch", "master")
-    svc_path = os.path.join(workspace_dir, svc.get("path", f"./services/{name}"))
+function run(cmd, cwd) {
+  try { return execSync(cmd, { cwd, encoding: 'utf8', timeout: 30000, stdio: ['pipe', 'pipe', 'pipe'] }).trim(); }
+  catch (e) { return e.stderr || e.message; }
+}
 
-    print(f"━━━ Service: {name} ━━━")
-    print(f"    Path   : {svc_path}")
-    print(f"    Remote : {remote or '(chưa khai báo)'}")
+const content = fs.readFileSync(configPath, 'utf8');
+const services = parseServices(content);
 
-    if not remote:
-        print(f"    ⚠️  Bỏ qua — chưa khai báo git.ssh trong nexus-config.yaml\n")
-        continue
+for (const svc of services) {
+  if (target && svc.name !== target) continue;
 
-    os.makedirs(svc_path, exist_ok=True)
-    git_dir = os.path.join(svc_path, ".git")
+  const remote = svc.ssh;
+  const defaultBranch = svc.default_branch;
+  const svcPath = path.resolve(workspaceDir, svc.path || `./services/${svc.name}`);
 
-    if os.path.exists(git_dir):
-        # Repo đã tồn tại → kiểm tra remote
-        result = subprocess.run(
-            ["git", "-C", svc_path, "remote", "get-url", "origin"],
-            capture_output=True, text=True
-        )
-        current_remote = result.stdout.strip()
-        if current_remote == remote:
-            print(f"    ✅ Repo đã setup đúng, fetch latest...")
-            subprocess.run(["git", "-C", svc_path, "fetch", "origin"], check=False)
-        else:
-            print(f"    ⚠️  Remote khác ({current_remote}), cập nhật...")
-            subprocess.run(["git", "-C", svc_path, "remote", "set-url", "origin", remote], check=True)
-            subprocess.run(["git", "-C", svc_path, "fetch", "origin"], check=False)
-    else:
-        # Thư mục có code nhưng chưa có .git → init + link remote
-        has_files = any(os.scandir(svc_path))
-        if has_files:
-            print(f"    📁 Thư mục đã có code, init git + link remote...")
-            subprocess.run(["git", "-C", svc_path, "init"], check=True)
-            subprocess.run(["git", "-C", svc_path, "remote", "add", "origin", remote], check=True)
-            subprocess.run(["git", "-C", svc_path, "fetch", "origin"], check=False)
-            # Nếu có remote branch → set tracking
-            result = subprocess.run(
-                ["git", "-C", svc_path, "branch", "-r"],
-                capture_output=True, text=True
-            )
-            if f"origin/{default_branch}" in result.stdout:
-                subprocess.run(
-                    ["git", "-C", svc_path, "branch", "--set-upstream-to",
-                     f"origin/{default_branch}", default_branch],
-                    check=False
-                )
-        else:
-            print(f"    📥 Clone từ remote...")
-            subprocess.run(["git", "clone", remote, svc_path], check=True)
+  console.log(`━━━ Service: ${svc.name} ━━━`);
+  console.log(`    Path   : ${svcPath}`);
+  console.log(`    Remote : ${remote || '(chưa khai báo)'}`);
 
-    print(f"    ✅ Done\n")
+  if (!remote) {
+    console.log(`    ⚠️  Bỏ qua — chưa khai báo git.ssh trong nexus-config.yaml\n`);
+    continue;
+  }
 
-print("🎉 Setup hoàn tất!")
-PYEOF
+  fs.mkdirSync(svcPath, { recursive: true });
+  const gitDir = path.join(svcPath, '.git');
+
+  if (fs.existsSync(gitDir)) {
+    // Repo đã tồn tại → kiểm tra remote
+    const currentRemote = run('git remote get-url origin', svcPath);
+    if (currentRemote === remote) {
+      console.log(`    ✅ Repo đã setup đúng, fetch latest...`);
+      run('git fetch origin', svcPath);
+    } else {
+      console.log(`    ⚠️  Remote khác (${currentRemote}), cập nhật...`);
+      run(`git remote set-url origin ${remote}`, svcPath);
+      run('git fetch origin', svcPath);
+    }
+  } else {
+    // Thư mục có code nhưng chưa có .git → init + link remote
+    const hasFiles = fs.readdirSync(svcPath).length > 0;
+    if (hasFiles) {
+      console.log(`    📁 Thư mục đã có code, init git + link remote...`);
+      run('git init', svcPath);
+      run(`git remote add origin ${remote}`, svcPath);
+      console.log(`    Fetching from remote...`);
+      run('git fetch origin', svcPath);
+      // Set tracking if remote branch exists
+      const branches = run('git branch -r', svcPath);
+      if (branches.includes(`origin/${defaultBranch}`)) {
+        run(`git branch --set-upstream-to=origin/${defaultBranch} ${defaultBranch}`, svcPath);
+      }
+    } else {
+      console.log(`    📥 Clone từ remote...`);
+      run(`git clone ${remote} ${svcPath}`, workspaceDir);
+    }
+  }
+
+  console.log(`    ✅ Done\n`);
+}
+
+console.log('🎉 Setup hoàn tất!');
+NODEJS

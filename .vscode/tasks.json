@@ -221,6 +221,24 @@
       "group": "none",
       "presentation": { "reveal": "always", "panel": "shared", "clear": true },
       "problemMatcher": []
+    },
+    {
+      "label": "📊 Services: Status Report",
+      "type": "shell",
+      "command": "bash scripts/service-status.sh",
+      "options": { "cwd": "${workspaceFolder:🏛️ Nexus Root}" },
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "📊 Services: Status Report (verbose)",
+      "type": "shell",
+      "command": "bash scripts/service-status.sh -v",
+      "options": { "cwd": "${workspaceFolder:🏛️ Nexus Root}" },
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+      "problemMatcher": []
     }
   ]
 }
