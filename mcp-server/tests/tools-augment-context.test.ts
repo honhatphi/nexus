@@ -24,7 +24,7 @@ describe("augment tool", () => {
       new Map([
         // Symbol search
         [
-          "n.name =~",
+          "toLower(n.name) CONTAINS toLower($pattern)",
           [
             {
               name: "handle_request",
@@ -111,7 +111,7 @@ describe("augment tool", () => {
     const memgraph = createMockMemgraph(
       new Map([
         [
-          "n.name =~",
+          "toLower(n.name) CONTAINS toLower($pattern)",
           [
             {
               name: "sync_data",
@@ -142,7 +142,7 @@ describe("augment tool", () => {
     expect(parsed.matches).toBe(1);
     // Verify service parameter was passed to Memgraph
     const searchCall = memgraph.calls.find((c) =>
-      c.cypher.includes("n.name =~"),
+      c.cypher.includes("toLower(n.name) CONTAINS toLower($pattern)"),
     );
     expect(searchCall?.params?.service).toBe("warehouse-2.0");
 

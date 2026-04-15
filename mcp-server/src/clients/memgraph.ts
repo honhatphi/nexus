@@ -72,7 +72,6 @@ export class MemgraphClient {
         source.file  AS sourceFile,
         target.name  AS dependency,
         target.file  AS depFile,
-        [r IN relationships(path) | coalesce(r.confidence, 1.0)] AS confidences,
         length(path)  AS depth
       ORDER BY depth
     `;
