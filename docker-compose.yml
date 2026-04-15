@@ -41,13 +41,15 @@ services:
   # ── MCP Server (Node.js) ─────────────────────────────────
   mcp-server:
     build:
-      context: ./mcp-server
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: mcp-server/Dockerfile
     container_name: nexus-mcp-server
     ports:
       - "${MCP_SERVER_PORT:-3100}:3100"
     env_file:
       - .env
+    volumes:
+      - ${NEXUS_REPOS_DIR:-~/repos}:/repos:ro
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - MCP_SERVER_PORT=3100

@@ -201,44 +201,7 @@
       "command": "node test-sync.mjs",
       "options": { "cwd": "${workspaceFolder:🔧 MCP Server}" },
       "group": "test",
-      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
-    },
-    // ── Services Setup ───────────────────────────────────────
-    {
-      "label": "🔗 Services: Setup All",
-      "type": "shell",
-      "command": "bash scripts/setup-services.sh",
-      "options": { "cwd": "${workspaceFolder:🏛️ Nexus Root}" },
-      "group": "none",
-      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
-      "problemMatcher": []
-    },
-    {
-      "label": "🔗 Services: Setup Warehouse 2.0",
-      "type": "shell",
-      "command": "bash scripts/setup-services.sh warehouse-2.0",
-      "options": { "cwd": "${workspaceFolder:🏛️ Nexus Root}" },
-      "group": "none",
-      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
-      "problemMatcher": []
-    },
-    {
-      "label": "📊 Services: Status Report",
-      "type": "shell",
-      "command": "bash scripts/service-status.sh",
-      "options": { "cwd": "${workspaceFolder:🏛️ Nexus Root}" },
-      "group": "none",
-      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
-      "problemMatcher": []
-    },
-    {
-      "label": "📊 Services: Status Report (verbose)",
-      "type": "shell",
-      "command": "bash scripts/service-status.sh -v",
-      "options": { "cwd": "${workspaceFolder:🏛️ Nexus Root}" },
-      "group": "none",
-      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
-      "problemMatcher": []
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
     }
   ]
 }
