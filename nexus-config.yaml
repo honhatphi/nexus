@@ -31,7 +31,7 @@ services:
     runtime: "Python 3.8 + Apache Airflow 2.6.1"
     description: "Enterprise Data Warehouse & ETL Orchestration — product catalogs, pricing, inventory, promotions sync across ERP, Magento, MongoDB, Elasticsearch, Kafka"
     git:
-      remote: ""          # TODO: điền GitLab URL — vd: git@gitlab.com:org/warehouse-2.0.git
+      ssh: ""             # paste SSH URL từ GitLab — vd: git@git.cps.onl:data/warehouse-2.0.git
       default_branch: master
     databases:
       - PostgreSQL 13 (data warehouse via dbt)

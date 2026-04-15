@@ -56,7 +56,7 @@ for svc in services:
         continue
 
     git_cfg = svc.get("git", {})
-    remote = git_cfg.get("remote", "").strip()
+    remote = (git_cfg.get("ssh") or git_cfg.get("remote") or "").strip()
     default_branch = git_cfg.get("default_branch", "master")
     svc_path = os.path.join(workspace_dir, svc.get("path", f"./services/{name}"))
 
@@ -65,7 +65,7 @@ for svc in services:
     print(f"    Remote : {remote or '(chưa khai báo)'}")
 
     if not remote:
-        print(f"    ⚠️  Bỏ qua — chưa khai báo git.remote trong nexus-config.yaml\n")
+        print(f"    ⚠️  Bỏ qua — chưa khai báo git.ssh trong nexus-config.yaml\n")
         continue
 
     os.makedirs(svc_path, exist_ok=True)

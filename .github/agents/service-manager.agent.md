@@ -29,7 +29,7 @@ User chỉ cần cung cấp **2 thông tin**:
 | Field        | Bắt buộc | Mô tả                                          | Ví dụ                                         |
 |--------------|----------|-------------------------------------------------|-----------------------------------------------|
 | `name`       | ✅       | Tên service (lowercase, hyphen-separated)       | `warehouse-2.0`, `product-service`            |
-| `git.remote` | ✅       | URL clone repo (SSH hoặc HTTPS)                 | `git@git.cps.onl:data/warehouse-2.0.git`     |
+| `git.ssh` | ✅       | URL clone repo (SSH hoặc HTTPS)                 | `git@git.cps.onl:data/warehouse-2.0.git`     |
 
 **Mọi thông tin còn lại agent TỰ XỬ LÝ:**
 
@@ -47,12 +47,12 @@ Tổ chức sử dụng GitLab nội bộ tại `git.cps.onl`. Cả SSH và HTTP
 
 ### Step 1 — Thu thập input
 
-Chỉ cần `name` và `git.remote`. Nếu user cho URL mà không cho name → suy luận từ repo name, confirm lại.
+Chỉ cần `name` và `git.ssh`. Nếu user cho URL mà không cho name → suy luận từ repo name, confirm lại.
 
 ### Step 2 — Validate
 
 - Kiểm tra `name` chưa tồn tại trong `nexus-config.yaml`
-- Kiểm tra `git.remote` URL hợp lệ:
+- Kiểm tra `git.ssh` URL hợp lệ:
   - SSH: `git@{host}:{group}/{repo}.git`
   - HTTPS: `https://{host}/{group}/{repo}.git` hoặc không có `.git`
 - Test connectivity: `git ls-remote {remote} 2>&1 | head -3` — phải có response
@@ -90,7 +90,7 @@ Cập nhật entry với ĐẦY ĐỦ thông tin auto-detected, theo format:
     runtime: "{runtime}"
     description: "{description}"
     git:
-      remote: "{git_remote}"
+      ssh: "{git_ssh}"
       default_branch: {default_branch}
     databases:
       - {db1}
@@ -122,7 +122,7 @@ Sau khi registry hoàn tất, TỰ ĐỘNG gọi Hub Manager agent:
 ## Validation Rules
 
 - `name`: lowercase, chỉ chứa `[a-z0-9-.]`, không bắt đầu bằng `-`
-- `git.remote`: phải match pattern SSH (`git@{host}:{path}.git`) hoặc HTTPS (`https://{host}/{path}`)
+- `git.ssh`: phải match pattern SSH (`git@{host}:{path}.git`) hoặc HTTPS (`https://{host}/{path}`)
 - Không được có 2 service cùng `name` hoặc cùng `path`
 - Connectivity test phải pass trước khi clone
 
