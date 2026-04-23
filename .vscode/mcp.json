@@ -2,7 +2,7 @@
   "servers": {
     "nexus-kb": {
       "type": "http",
-      "url": "http://localhost:3100/mcp",
+      "url": "http://localhost:13100/mcp",
       "gallery": {
         "description": "Nexus Knowledge Base — Graph + Vector search over your codebase. Query dependencies, search functions semantically, sync new services."
       }

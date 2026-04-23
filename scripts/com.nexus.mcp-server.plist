@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.nexus.mcp-server</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/CPS-MKT1-D02072/Workspace/Nexus/scripts/start-mcp-server.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/CPS-MKT1-D02072/Workspace/Nexus/mcp-server</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/nexus-mcp-server.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/nexus-mcp-server.err</string>
+</dict>
+</plist>

@@ -32,39 +32,17 @@ services:
       - CHROMA_SERVER_AUTHN_PROVIDER=${CHROMADB_AUTH_PROVIDER:-}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8000"]
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v2/heartbeat')",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
-
-  # ── MCP Server (Node.js) ─────────────────────────────────
-  mcp-server:
-    build:
-      context: .
-      dockerfile: mcp-server/Dockerfile
-    container_name: nexus-mcp-server
-    ports:
-      - "${MCP_SERVER_PORT:-3100}:3100"
-    env_file:
-      - .env
-    volumes:
-      - ${NEXUS_REPOS_DIR:-~/repos}:/repos:ro
-    environment:
-      - NODE_ENV=${NODE_ENV:-development}
-      - MCP_SERVER_PORT=3100
-      - MEMGRAPH_URI=bolt://memgraph:7687
-      - MEMGRAPH_USER=${MEMGRAPH_USER:-}
-      - MEMGRAPH_PASSWORD=${MEMGRAPH_PASSWORD:-}
-      - CHROMADB_URL=http://chromadb:8000
-      - CHROMADB_TOKEN=${CHROMADB_TOKEN:-}
-      - CHROMADB_COLLECTION=${CHROMADB_COLLECTION:-nexus_codebase}
-    depends_on:
-      memgraph:
-        condition: service_healthy
-      chromadb:
-        condition: service_healthy
-    restart: unless-stopped
 
 volumes:
   memgraph_data:
