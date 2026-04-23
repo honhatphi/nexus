@@ -201,8 +201,7 @@
       "command": "node test-sync.mjs",
       "options": { "cwd": "${workspaceFolder:🔧 MCP Server}" },
       "group": "test",
-      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
-      "problemMatcher": []
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
     }
   ]
 }

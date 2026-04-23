@@ -72,7 +72,7 @@ export class MemgraphClient {
         source.file  AS sourceFile,
         target.name  AS dependency,
         target.file  AS depFile,
-        length(path)  AS depth
+        size(path)  AS depth
       ORDER BY depth
     `;
     return this.query(cypher, { name, minConf: minConfidence });

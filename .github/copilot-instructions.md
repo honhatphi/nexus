@@ -112,7 +112,8 @@ get_impact_analysis({ name: "PaymentService", maxDepth: 3 })
 ## Autopilot Safety — PreToolUse Hook
 
 > **Mọi lệnh shell autopilot chạy đều qua hook kiểm duyệt trước khi thực thi.**
-> Hook được cấu hình tại `.github/hooks/safe-commands.json` → gọi `scripts/hooks/check-safe-command.js`.
+> Hook được cấu hình global tại `~/.copilot/hooks/safe-commands.json` → gọi `~/.copilot/hooks/check-safe-command.js`.
+> Hoạt động ở mọi workspace trên máy.
 
 ### Phân loại lệnh
 
@@ -142,8 +143,8 @@ get_impact_analysis({ name: "PaymentService", maxDepth: 3 })
 
 ### Cập nhật danh sách pattern
 
-**Chỉ** chỉnh sửa `scripts/hooks/check-safe-command.js` khi có lệnh nguy hiểm mới cần bổ sung.
-Không để autopilot tự sửa file hook này — luôn review thủ công.
+**Chỉ** chỉnh sửa `~/.copilot/hooks/check-safe-command.js` khi có lệnh nguy hiểm mới cần bổ sung.
+Bản gốc lưu tại `scripts/hooks/check-safe-command.js` trong repo. Không để autopilot tự sửa file hook — luôn review thủ công.
 
 ---
 
@@ -172,11 +173,9 @@ Không để autopilot tự sửa file hook này — luôn review thủ công.
 ```
 Nexus/
 ├── .github/
-│   ├── copilot-instructions.md    # This file — global agent rules
-│   └── hooks/
-│       └── safe-commands.json     # PreToolUse safety hook (ALLOW/ASK/DENY)
+│   └── copilot-instructions.md    # This file — global agent rules
 ├── nexus-config.yaml               # Hub & Spoke service registry
-├── docker-compose.yml              # Memgraph + ChromaDB infrastructure
+├── docker-compose.yml              # Memgraph + ChromaDB + MCP Server (Docker)
 │
 ├── nexus-hub/                      # 🏛️ HUB — Centralized knowledge
 │   ├── common-tools/              #   TypeScript: universal parser + sync engine
@@ -195,27 +194,37 @@ Nexus/
 │       ├── index.ts               #   Server entry (StreamableHTTP)
 │       ├── config.ts              #   Environment config
 │       ├── clients/               #   DB clients (Memgraph, ChromaDB)
-│       └── tools/                 #   MCP tools (sync, parse, query, search, impact)
+│       └── tools/                 #   MCP tools (10 tools)
 │
-├── .github/agents/                # VS Code Copilot Custom Agents (.agent.md)
-│   ├── hub-manager.agent.md       #   Hub knowledge management & sync
-│   ├── coder.agent.md             #   Service-scoped code execution
-│   └── search.agent.md            #   KB-driven Q&A, reports & analysis
-│
-├── agentic-workflows/             # Multi-step workflow orchestrations
-│   ├── feature-flow.md            #   Feature implementation workflow
-│   ├── maintain-hub.md            #   Hub maintenance workflow
-│   └── sync-workspace.md          #   Full workspace sync workflow
+├── scripts/                       # Git hooks + safety scripts
+│   ├── hooks/check-safe-command.js #  PreToolUse safety hook (source of truth)
+│   ├── commit-msg                 #   Conventional Commits validator
+│   └── pre-commit                 #   Block direct commits to master/main
 │
 └── services/                      # 🔗 SPOKES (local only, git-ignored)
     └── warehouse-2.0/             #   Python 3.8 + Airflow ETL platform
+```
+
+### Global User-Level Files
+
+```
+~/Library/Application Support/Code/User/prompts/
+├── coder.agent.md                 # ⚡ Coder agent mode
+├── git-manager.agent.md           # 🌿 Git Manager agent mode
+├── hub-manager.agent.md           # 🏛️ Hub Manager agent mode
+└── search.agent.md                # 🔍 Search agent mode
+
+~/.copilot/hooks/
+├── safe-commands.json             # PreToolUse hook config (global)
+└── check-safe-command.js          # Safety script (ALLOW/ASK/DENY)
 ```
 
 ---
 
 ## MCP Tools Reference
 
-The MCP server (`/mcp-server`) exposes 5 tools via HTTP on port 3100:
+The MCP server (`/mcp-server`) exposes 10 tools via HTTP on port 3100.
+Infra runs as Docker containers (`docker compose up -d`) with `restart: unless-stopped`.
 
 | Tool                     | Purpose                                                              |
 | ------------------------ | -------------------------------------------------------------------- |
@@ -224,6 +233,11 @@ The MCP server (`/mcp-server`) exposes 5 tools via HTTP on port 3100:
 | `query_graph`            | Execute Cypher queries against Memgraph                              |
 | `search_knowledge_base`  | Semantic search against ChromaDB vectors                             |
 | `get_impact_analysis`    | Trace transitive dependencies for a function/file                    |
+| `check_staleness`        | Detect services with outdated KB data                                |
+| `augment`                | Enrich KB entries with additional context                            |
+| `get_symbol_context`     | Get full context for a specific symbol                               |
+| `detect_changes`         | Detect code changes since last sync                                  |
+| `get_process_flows`      | Extract business process flows from code                             |
 
 ---
 
@@ -262,18 +276,18 @@ The following Global Skills apply to the **entire project** (all services in `/s
 
 ## Summary of Core Rules
 
-| #   | Rule                                                                                                  | Priority |
-| --- | ----------------------------------------------------------------------------------------------------- | -------- |
-| 1   | Nexus Hub is the SINGLE source of truth — always consult first                                        | Critical |
-| 2   | Use `query_graph` to check cross-service dependencies before coding                                   | Critical |
-| 3   | Zero regression — stability of existing code comes first                                              | Critical |
-| 4   | Always search Hub + call `search_knowledge_base` before any suggestion                                | Required |
-| 5   | Each service owns its stack; no cross-service runtime mixing                                          | Required |
-| 6   | Global Skills (Security + API Design) apply to ALL sub-projects                                       | Required |
-| 7   | When adding a new service to `/services/`, suggest running `sync_service_knowledge`                   | Required |
-| 8   | Clean Code + SOLID principles for all new code                                                        | Required |
-| 9   | Follow Git Flow — branch naming, Conventional Commits, PR before merge                                | Required |
-| 10  | All autopilot shell commands go through PreToolUse hook — never bypass `.github/hooks/safe-commands.json` | Required |
+| #   | Rule                                                                                                         | Priority |
+| --- | ------------------------------------------------------------------------------------------------------------ | -------- |
+| 1   | Nexus Hub is the SINGLE source of truth — always consult first                                               | Critical |
+| 2   | Use `query_graph` to check cross-service dependencies before coding                                          | Critical |
+| 3   | Zero regression — stability of existing code comes first                                                     | Critical |
+| 4   | Always search Hub + call `search_knowledge_base` before any suggestion                                       | Required |
+| 5   | Each service owns its stack; no cross-service runtime mixing                                                 | Required |
+| 6   | Global Skills (Security + API Design) apply to ALL sub-projects                                              | Required |
+| 7   | When adding a new service to `/services/`, suggest running `sync_service_knowledge`                          | Required |
+| 8   | Clean Code + SOLID principles for all new code                                                               | Required |
+| 9   | Follow Git Flow — branch naming, Conventional Commits, PR before merge                                       | Required |
+| 10  | All autopilot shell commands go through PreToolUse hook — never bypass `~/.copilot/hooks/safe-commands.json` | Required |
 
 ---
 
@@ -304,8 +318,8 @@ The following Global Skills apply to the **entire project** (all services in `/s
 
 - **`commit-msg`** — validates Conventional Commits format on every commit (`/scripts/commit-msg`)
 - **`pre-commit`** — blocks direct commits to `master`/`main` (`/scripts/pre-commit`)
-- **`PreToolUse`** — autopilot safety check for shell commands (`.github/hooks/safe-commands.json` → `scripts/hooks/check-safe-command.js`)
-- Hooks are installed automatically via `postCreateCommand` on devcontainer create
+- **`PreToolUse`** — autopilot safety check for shell commands (`~/.copilot/hooks/safe-commands.json` — global, works in all workspaces)
+- Git hooks installed via `scripts/setup-git-hooks.sh`
 
 ### PR Rules
 

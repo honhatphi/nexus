@@ -1,0 +1,12 @@
+**/node_modules/
+**/dist/
+**/.git/
+services/
+plan/
+reference/
+agentic-workflows/
+user-prompts/
+.github/
+scripts/
+*.md
+.gitkeep
