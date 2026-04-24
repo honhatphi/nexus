@@ -114,7 +114,8 @@ const INFRA_RULES: InfraRule[] = [
   // ── BE Route Definitions (must be BEFORE generic HTTP client rules) ──
   // Express / Fastify / Hapi (JS/TS): router.get, app.post, server.put ...
   {
-    pattern: /^(app|router|server|fastify|route)\.(get|post|put|patch|delete|use|all)$/,
+    pattern:
+      /^(app|router|server|fastify|route)\.(get|post|put|patch|delete|use|all)$/,
     kind: "http_route_define",
     targetArg: 0,
     fallbackTarget: "<path>",
@@ -122,7 +123,8 @@ const INFRA_RULES: InfraRule[] = [
   },
   // FastAPI / Flask / APIRouter (Python): @app.get, @router.post ...
   {
-    pattern: /^(app|router|blueprint|api|bp)\.(get|post|put|patch|delete|route)$/,
+    pattern:
+      /^(app|router|blueprint|api|bp)\.(get|post|put|patch|delete|route)$/,
     kind: "http_route_define",
     targetArg: 0,
     fallbackTarget: "<path>",
@@ -138,7 +140,8 @@ const INFRA_RULES: InfraRule[] = [
   },
   // Spring Boot (Java): @GetMapping, @PostMapping, @RequestMapping
   {
-    pattern: /^(GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping|RequestMapping)$/,
+    pattern:
+      /^(GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping|RequestMapping)$/,
     kind: "http_route_define",
     targetArg: 0,
     fallbackTarget: "<path>",
@@ -209,8 +212,66 @@ const INFRA_RULES: InfraRule[] = [
     targetArg: 0,
     fallbackTarget: "<url>",
     detailTemplate: "HTTP call to: {target}",
+  },  // ── gRPC Client (caller side) ─────────────────────────────────────
+  // Python: stub.SomeMethod(), grpc.insecure_channel(), pb2_grpc.XxxStub()
+  {
+    pattern: /stub\.\w+$|grpc\.insecure_channel$|pb2_grpc\.\w+Stub$/,
+    kind: "grpc_call",
+    targetArg: 0,
+    fallbackTarget: "<grpc-service>",
+    detailTemplate: "gRPC call to: {target}",
   },
-];
+  // Go: pb.NewXxxClient(), conn.SomeMethod()
+  {
+    pattern: /pb\.New\w+Client$|grpc\.Dial$/,
+    kind: "grpc_call",
+    targetArg: 0,
+    fallbackTarget: "<grpc-service>",
+    detailTemplate: "gRPC call to: {target}",
+  },
+  // Java: stub.someMethod(), ManagedChannelBuilder.forAddress()
+  {
+    pattern: /ManagedChannelBuilder$|stub\.\w+$|channel\.newCall$/,
+    kind: "grpc_call",
+    targetArg: 0,
+    fallbackTarget: "<grpc-service>",
+    detailTemplate: "gRPC call to: {target}",
+  },
+  // TypeScript/JS: new XxxClient(), grpc.Client
+  {
+    pattern: /new \w+Client$|new \w+ServiceClient$/,
+    kind: "grpc_call",
+    targetArg: 0,
+    fallbackTarget: "<grpc-service>",
+    detailTemplate: "gRPC call to: {target}",
+  },
+  // ── gRPC Server (handler side) ────────────────────────────────────
+  // NestJS: @GrpcMethod('ServiceName', 'MethodName')
+  {
+    pattern: /^GrpcMethod$|^GrpcStreamMethod$/,
+    kind: "grpc_serve",
+    targetArg: 0,
+    fallbackTarget: "<grpc-method>",
+    detailTemplate: "gRPC handler for: {target}",
+    metadataKeys: ["service"],
+  },
+  // Python: servicer base class implementation — detected via class inherit, matched by method name
+  // Go: server.RegisterXxxServer() — registers a gRPC handler
+  {
+    pattern: /\.RegisterXxx\w+Server$|pb\.Register\w+Server$/,
+    kind: "grpc_serve",
+    targetArg: 0,
+    fallbackTarget: "<grpc-service>",
+    detailTemplate: "gRPC server registers: {target}",
+  },
+  // Java Spring: @GrpcService class-level (simulated as method call in some frameworks)
+  {
+    pattern: /^GrpcService$|^GrpcGlobalServerInterceptor$/,
+    kind: "grpc_serve",
+    targetArg: 0,
+    fallbackTarget: "<grpc-service>",
+    detailTemplate: "gRPC service: {target}",
+  },];
 
 // ── Detection ────────────────────────────────────────────────
 
@@ -264,11 +325,18 @@ export function detectInfraPatterns(
       }
 
       // Extract HTTP method from callee for route/request kinds
-      if (
-        rule.kind === "http_route_define" ||
-        rule.kind === "http_request"
-      ) {
-        const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "ALL", "USE"];
+      if (rule.kind === "http_route_define" || rule.kind === "http_request") {
+        const HTTP_METHODS = [
+          "GET",
+          "POST",
+          "PUT",
+          "PATCH",
+          "DELETE",
+          "HEAD",
+          "OPTIONS",
+          "ALL",
+          "USE",
+        ];
         const calleeParts = callee.split(".");
         const lastPart = calleeParts[calleeParts.length - 1].toUpperCase();
         if (HTTP_METHODS.includes(lastPart)) {

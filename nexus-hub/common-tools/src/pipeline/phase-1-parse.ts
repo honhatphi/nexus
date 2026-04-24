@@ -1,6 +1,7 @@
 // ─────────────────────────────────────────────────────────────
 // Phase 1 — Tree-sitter parsing
 // Parses all changed files and stores ParseResult in context.
+// OpenAPI/Swagger spec files are parsed separately by openapi-spec.ts.
 // ─────────────────────────────────────────────────────────────
 
 import type {
@@ -9,6 +10,7 @@ import type {
   PipelineDeps,
   PhaseResult,
 } from "./types.js";
+import { isOpenApiFile, parseOpenApiSpec } from "../parser/openapi-spec.js";
 
 export const parsePhase: PipelinePhase = {
   name: "parse",
@@ -22,10 +24,17 @@ export const parsePhase: PipelinePhase = {
       if (!file.content) continue;
 
       try {
-        const parseResult = await deps.parser.parseSource(
-          file.absolutePath,
-          file.content,
-        );
+        let parseResult;
+
+        if (isOpenApiFile(file.absolutePath)) {
+          // OpenAPI / Swagger spec — use dedicated parser
+          parseResult = parseOpenApiSpec(file.absolutePath, file.content);
+        } else {
+          parseResult = await deps.parser.parseSource(
+            file.absolutePath,
+            file.content,
+          );
+        }
 
         // Override file path to service-relative
         parseResult.file = `${ctx.serviceName}/${file.relativePath}`;

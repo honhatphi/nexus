@@ -317,3 +317,49 @@ router.patch("/api/users/:id/status", patchStatus);
     expect(route?.metadata?.method).toBe("PATCH");
   });
 });
+
+// ─────────────────────────────────────────────────────────────
+// P1: gRPC detection
+// ─────────────────────────────────────────────────────────────
+
+describe("Infrastructure Detection — gRPC client (grpc_call)", () => {
+  it("detects Python gRPC stub call", async () => {
+    const py = `
+def call_payment(request):
+    channel = grpc.insecure_channel("payment-svc:50051")
+    stub = pb2_grpc.PaymentServiceStub(channel)
+    return stub.Charge(request)
+`;
+    const result = await parser.parseSource("payment_client.py", py);
+    const grpc = result.infraPatterns.find((p) => p.kind === "grpc_call");
+    expect(grpc).toBeDefined();
+  });
+
+  it("detects Go gRPC Dial", async () => {
+    const go = `
+func NewClient() {
+    conn, _ := grpc.Dial("inventory-svc:50052", grpc.WithInsecure())
+    client := pb.NewInventoryClient(conn)
+}
+`;
+    const result = await parser.parseSource("client.go", go);
+    const grpc = result.infraPatterns.find((p) => p.kind === "grpc_call");
+    expect(grpc).toBeDefined();
+  });
+});
+
+describe("Infrastructure Detection — gRPC server (grpc_serve)", () => {
+  it("detects NestJS @GrpcMethod decorator", async () => {
+    const ts = `
+class UserService {
+  @GrpcMethod("UserService", "FindOne")
+  findOne(data: UserById): User {
+    return this.users.find(u => u.id === data.id);
+  }
+}
+`;
+    const result = await parser.parseSource("user.controller.ts", ts);
+    const grpc = result.infraPatterns.find((p) => p.kind === "grpc_serve");
+    expect(grpc).toBeDefined();
+  });
+});

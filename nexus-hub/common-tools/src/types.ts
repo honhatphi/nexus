@@ -60,6 +60,8 @@ export type InfraKind =
   | "db_elasticsearch"
   | "http_request"
   | "http_route_define"
+  | "grpc_call"
+  | "grpc_serve"
   | "class_inherit";
 
 /**

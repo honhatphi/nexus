@@ -38,11 +38,13 @@ function normalizePath(raw: string): string {
   } catch {
     // Not a valid URL — treat as path
   }
-  return raw
-    .toLowerCase()
-    .split("?")[0]   // strip query string
-    .replace(/\/+$/, "") // trailing slash
-    || "/";
+  return (
+    raw
+      .toLowerCase()
+      .split("?")[0] // strip query string
+      .replace(/\/+$/, "") || // trailing slash
+    "/"
+  );
 }
 
 /**
@@ -57,7 +59,7 @@ function routePatternToRegex(routePath: string): RegExp {
       // Keep { } as placeholders — replace after escaping special chars
       ["{", "}"].includes(c) ? c : `\\${c}`,
     )
-    .replace(/:\w+/g, "[^/]+")       // :param → [^/]+
+    .replace(/:\w+/g, "[^/]+") // :param → [^/]+
     .replace(/\{[^}]+\}/g, "[^/]+"); // {param} → [^/]+
   return new RegExp(`^${escaped}$`);
 }
@@ -75,7 +77,11 @@ function matchScore(callerUrl: string, routePath: string): number {
   const normalizedRoute = normalizePath(routePath);
 
   // Skip wildcard/fallback targets
-  if (normalizedRoute === "<path>" || normalizedRoute === "" || normalizedRoute === "/") {
+  if (
+    normalizedRoute === "<path>" ||
+    normalizedRoute === "" ||
+    normalizedRoute === "/"
+  ) {
     return 0;
   }
 
@@ -189,7 +195,8 @@ export const httpLinkagePhase: PipelinePhase = {
 
         // Take only the best-scoring matches (avoid fan-out to low-quality matches)
         const topScore = scored[0]?.score ?? 0;
-        const best = topScore > 0 ? scored.filter((h) => h.score === topScore) : [];
+        const best =
+          topScore > 0 ? scored.filter((h) => h.score === topScore) : [];
 
         for (const handler of best) {
           try {
@@ -217,7 +224,9 @@ export const httpLinkagePhase: PipelinePhase = {
             linksCreated++;
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            errors.push(`HTTP link failed (${callerName} → ${handler.handlerName}): ${msg}`);
+            errors.push(
+              `HTTP link failed (${callerName} → ${handler.handlerName}): ${msg}`,
+            );
           }
         }
       }
@@ -225,7 +234,11 @@ export const httpLinkagePhase: PipelinePhase = {
       return {
         phase: "http-linkage",
         success: errors.length === 0,
-        stats: { httpTriggersCreated: linksCreated, callersChecked: callers.length, handlersAvailable: handlers.length },
+        stats: {
+          httpTriggersCreated: linksCreated,
+          callersChecked: callers.length,
+          handlersAvailable: handlers.length,
+        },
         errors,
         durationMs: 0,
       };

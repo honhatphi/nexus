@@ -157,6 +157,8 @@ const INFRA_LABELS: Record<string, string> = {
   db_elasticsearch: "Database",
   http_request: "HTTPEndpoint",
   http_route_define: "APIRoute",
+  grpc_call: "GRPCEndpoint",
+  grpc_serve: "GRPCEndpoint",
 };
 
 const INFRA_EDGE: Record<string, string> = {
@@ -167,6 +169,8 @@ const INFRA_EDGE: Record<string, string> = {
   db_elasticsearch: "CONNECTS_TO",
   http_request: "HTTP_CALL",
   http_route_define: "EXPOSES",
+  grpc_call: "GRPC_CALL",
+  grpc_serve: "GRPC_HANDLES",
 };
 
 const DB_TYPE: Record<string, string> = {
@@ -256,8 +260,25 @@ async function upsertInfraToGraph(
       const method = ip.metadata?.method ?? "GET";
       await graph.write(
         `MERGE (t:APIRoute {path: $path, method: $method, service: $service})
-         SET t.name = $path, t.updatedAt = timestamp()`,
-        { path: ip.target, method, service: serviceName },
+         SET t.name = $path,
+             t.operationId = $operationId,
+             t.source = $source,
+             t.updatedAt = timestamp()`,
+        {
+          path: ip.target,
+          method,
+          service: serviceName,
+          operationId: ip.metadata?.operationId ?? "",
+          source: ip.metadata?.source ?? "code",
+        },
+      );
+    } else if (ip.kind === "grpc_call" || ip.kind === "grpc_serve") {
+      // GRPCEndpoint: identity by name + service (the gRPC service name, not microservice)
+      const grpcService = ip.metadata?.service ?? ip.target;
+      await graph.write(
+        `MERGE (t:GRPCEndpoint {name: $name, service: $grpcService})
+         SET t.updatedAt = timestamp()`,
+        { name: ip.target, grpcService },
       );
     } else {
       await graph.write(
@@ -283,6 +304,23 @@ async function upsertInfraToGraph(
             service: serviceName,
             path: ip.target,
             method,
+            line: ip.line,
+          },
+        );
+      } else if (ip.kind === "grpc_call" || ip.kind === "grpc_serve") {
+        const grpcService = ip.metadata?.service ?? ip.target;
+        const grpcEdge = ip.kind === "grpc_call" ? "GRPC_CALL" : "GRPC_HANDLES";
+        await graph.write(
+          `MATCH (f:Function {name: $fnName, file: $file, service: $service})
+           MATCH (t:GRPCEndpoint {name: $name, service: $grpcService})
+           MERGE (f)-[r:${grpcEdge}]->(t)
+           SET r.line = $line, r.updatedAt = timestamp()`,
+          {
+            fnName: ownerFn.name,
+            file: parseResult.file,
+            service: serviceName,
+            name: ip.target,
+            grpcService,
             line: ip.line,
           },
         );
