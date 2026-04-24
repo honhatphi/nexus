@@ -14,13 +14,14 @@ export class ChromaDBClient {
   private collection: Collection | null = null;
 
   constructor(config: Config["chromadb"]) {
-    const url = new URL(config.url);
+    // Use `path` constructor (chromadb 3.x) — `ssl/host/port` is deprecated
+    // and routes to a different base URL causing 404s with server 1.4.x
     this.client = new ChromaClient({
-      ssl: url.protocol === "https:",
-      host: url.hostname,
-      port: parseInt(url.port || (url.protocol === "https:" ? "443" : "8000"), 10),
-      ...(config.token ? { authToken: config.token } : {}),
-    });
+      path: config.url,
+      ...(config.token
+        ? { auth: { provider: "token", credentials: config.token } }
+        : {}),
+    } as ConstructorParameters<typeof ChromaClient>[0]);
     this.collectionName = config.collection;
   }
 
@@ -62,7 +63,7 @@ export class ChromaDBClient {
   async upsert(
     ids: string[],
     documents: string[],
-    metadatas: Metadata[]
+    metadatas: Metadata[],
   ): Promise<void> {
     const collection = await this.getCollection();
     await collection.upsert({ ids, documents, metadatas });

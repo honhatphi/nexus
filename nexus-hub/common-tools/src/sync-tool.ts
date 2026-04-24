@@ -98,16 +98,14 @@ export class SyncServiceKnowledge {
     );
 
     // ── ChromaDB ──
-    const chromaUrl = new URL(config.chromadb.url);
+    // Use `path` constructor (chromadb 3.x) — `ssl/host/port` is deprecated
+    // and routes to a different base URL causing 404s with server 1.4.x
     this.chromaClient = new ChromaClient({
-      ssl: chromaUrl.protocol === "https:",
-      host: chromaUrl.hostname,
-      port: parseInt(
-        chromaUrl.port || (chromaUrl.protocol === "https:" ? "443" : "8000"),
-        10,
-      ),
-      ...(config.chromadb.token ? { authToken: config.chromadb.token } : {}),
-    });
+      path: config.chromadb.url,
+      ...(config.chromadb.token
+        ? { auth: { provider: "token", credentials: config.chromadb.token } }
+        : {}),
+    } as ConstructorParameters<typeof ChromaClient>[0]);
     this.collectionName = config.chromadb.collection ?? "nexus_code";
 
     // ── Parser ──
