@@ -5,7 +5,7 @@
  * Usage: node test-new-tools.mjs
  */
 
-const MCP_URL = "http://localhost:3100/mcp";
+const MCP_URL = "http://localhost:13100/mcp";
 const HEADERS = {
   "Content-Type": "application/json",
   Accept: "application/json, text/event-stream",
@@ -197,7 +197,8 @@ async function main() {
   const detectResult = await call("tools/call", {
     name: "detect_changes",
     arguments: {
-      service_path: "/workspace/services/warehouse-2.0",
+      service_path:
+        "/Users/CPS-MKT1-D02072/Workspace/python/source/warehouse-2.0",
       ref: "HEAD~1",
     },
   });

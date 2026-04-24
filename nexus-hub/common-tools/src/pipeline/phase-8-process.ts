@@ -18,6 +18,91 @@ const MAX_ENTRY_POINTS = 30;
 const MAX_TRACE_DEPTH = 10;
 const MAX_TRACES_PER_ENTRY = 4;
 
+// ── BFS Trace ────────────────────────────────────────────────
+// Memgraph does not support:
+//   - inline property filters on anonymous nodes in WHERE patterns
+//     e.g. WHERE NOT (n)-[:REL]->(:Label{prop:$val})
+//   - list comprehensions over path nodes: [x IN nodes(path) | x.name]
+// We use TypeScript BFS with simple 1-hop Cypher queries instead.
+
+interface TraceResult {
+  steps: string[];
+  files: string[];
+  depth: number;
+}
+
+async function traceExecution(
+  graph: PipelineDeps["graph"],
+  entryName: string,
+  entryFile: string,
+  serviceName: string,
+  maxDepth: number,
+  maxTraces: number,
+): Promise<TraceResult[]> {
+  const traces: TraceResult[] = [];
+
+  type QueueItem = {
+    name: string;
+    file: string;
+    stepNames: string[];
+    stepFiles: string[];
+  };
+
+  const queue: QueueItem[] = [
+    {
+      name: entryName,
+      file: entryFile,
+      stepNames: [entryName],
+      stepFiles: [entryFile],
+    },
+  ];
+  const visited = new Set<string>([`${entryName}::${entryFile}`]);
+
+  while (queue.length > 0 && traces.length < maxTraces) {
+    const current = queue.shift()!;
+
+    if (current.stepNames.length > maxDepth) continue;
+
+    // Find same-service callees (1 hop). Uses simple OPTIONAL MATCH compatible with Memgraph.
+    const callees = await graph.query(
+      `MATCH (f:Function {name: $name, service: $service})
+       -[:CALLS|ASYNC_TRIGGERS]->(callee:Function)
+       WHERE callee.service = $service AND callee.name <> $name
+       RETURN callee.name AS name, callee.file AS file
+       LIMIT 10`,
+      { name: current.name, service: serviceName },
+    );
+
+    if (callees.length === 0 || current.stepNames.length >= maxDepth) {
+      // Terminal node or depth limit — record trace if non-trivial
+      if (current.stepNames.length > 1) {
+        traces.push({
+          steps: current.stepNames,
+          files: current.stepFiles,
+          depth: current.stepNames.length - 1,
+        });
+      }
+      continue;
+    }
+
+    for (const callee of callees.slice(0, 3)) {
+      const name = callee.name as string;
+      const file = callee.file as string;
+      const key = `${name}::${file}`;
+      if (visited.has(key)) continue;
+      visited.add(key);
+      queue.push({
+        name,
+        file,
+        stepNames: [...current.stepNames, name],
+        stepFiles: [...current.stepFiles, file],
+      });
+    }
+  }
+
+  return traces.sort((a, b) => b.depth - a.depth);
+}
+
 // ── Phase Definition ─────────────────────────────────────────
 
 export const processTracingPhase: PipelinePhase = {
@@ -73,29 +158,20 @@ export const processTracingPhase: PipelinePhase = {
       const entryFile = entry.file as string;
 
       try {
-        // Find paths from entry to terminal functions (no further outgoing CALLS)
-        const traces = await deps.graph.query(
-          `MATCH path = (start:Function {name: $name, file: $file, service: $service})
-                 -[:CALLS|ASYNC_TRIGGERS*1..${MAX_TRACE_DEPTH}]->(end:Function)
-           WHERE NOT (end)-[:CALLS|ASYNC_TRIGGERS]->(:Function {service: $service})
-             AND start <> end
-           RETURN [n IN nodes(path) | n.name] AS steps,
-                  [n IN nodes(path) | n.file] AS files,
-                  length(path) AS depth
-           ORDER BY depth DESC
-           LIMIT ${MAX_TRACES_PER_ENTRY}`,
-          {
-            name: entryName,
-            file: entryFile,
-            service: ctx.serviceName,
-          },
+        // BFS trace — Memgraph-compatible (no path list comprehensions, no NOT patterns)
+        const traces = await traceExecution(
+          deps.graph,
+          entryName,
+          entryFile,
+          ctx.serviceName,
+          MAX_TRACE_DEPTH,
+          MAX_TRACES_PER_ENTRY,
         );
 
         if (traces.length === 0) continue;
 
         // Use the longest trace as the representative process
-        const longestTrace = traces[0];
-        const steps = longestTrace.steps as string[];
+        const steps = traces[0].steps;
         const processName = `${ctx.serviceName}::${entryName}`;
 
         // Upsert Process node
