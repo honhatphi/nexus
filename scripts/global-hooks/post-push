@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# ─── Nexus KB — global post-push hook ────────────────────────────────────────
+# Runs after every successful `git push` on any repo on this machine.
+# Triggers an incremental KB sync in the background — never blocks push.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Resolve the repo root (works from any subdirectory)
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+
+# Find node — check nvm, homebrew, and system paths
+_find_node() {
+  # Already in PATH (common in interactive shell)
+  if command -v node &>/dev/null; then
+    command -v node
+    return
+  fi
+  # nvm-managed: find latest installed version
+  local nvm_dir="${NVM_DIR:-${HOME}/.nvm}/versions/node"
+  if [ -d "$nvm_dir" ]; then
+    local latest
+    latest="$(ls -1 "$nvm_dir" 2>/dev/null | sort -V | tail -1)"
+    [ -n "$latest" ] && echo "${nvm_dir}/${latest}/bin/node" && return
+  fi
+  # Homebrew (Apple Silicon & Intel)
+  for p in /opt/homebrew/bin/node /usr/local/bin/node; do
+    [ -x "$p" ] && echo "$p" && return
+  done
+}
+
+NODE="$(_find_node)"
+if [ -z "$NODE" ] || [ ! -x "$NODE" ]; then
+  echo "[nexus-kb] warning: node not found — skipping KB sync for ${REPO_ROOT}" \
+    >> "${HOME}/.nexus/sync.log" 2>&1
+  exit 0
+fi
+
+# Fire-and-forget: run sync in background, append to log
+nohup "$NODE" "${HOME}/.nexus/sync-kb.mjs" "$REPO_ROOT" \
+  >> "${HOME}/.nexus/sync.log" 2>&1 &
+
+exit 0

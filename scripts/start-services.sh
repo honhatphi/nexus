@@ -140,12 +140,15 @@ wait_tcp chromadb 8000 "ChromaDB (http://chromadb:8000)" 30
 # These let VS Code extensions + CLI tools use localhost addresses
 echo ""
 echo "🔌 Starting localhost proxies..."
-start_service socat-chromadb      socat TCP-LISTEN:8000,fork,reuseaddr TCP:chromadb:8000
-start_service socat-memgraph-bolt socat TCP-LISTEN:7687,fork,reuseaddr TCP:memgraph:7687
-start_service socat-memgraph-lab  socat TCP-LISTEN:3000,fork,reuseaddr TCP:memgraph:3000
-echo "  ✅ localhost:8000 → ChromaDB"
-echo "  ✅ localhost:7687 → Memgraph Bolt"
-echo "  ✅ localhost:3000 → Memgraph Lab"
+_CHROMA_PORT=${CHROMADB_PORT:-8000}
+_BOLT_PORT=${MEMGRAPH_BOLT_PORT:-7687}
+_LAB_PORT=${MEMGRAPH_WEB_PORT:-3000}
+start_service socat-chromadb      socat TCP-LISTEN:${_CHROMA_PORT},fork,reuseaddr TCP:chromadb:8000
+start_service socat-memgraph-bolt socat TCP-LISTEN:${_BOLT_PORT},fork,reuseaddr TCP:memgraph:7687
+start_service socat-memgraph-lab  socat TCP-LISTEN:${_LAB_PORT},fork,reuseaddr TCP:memgraph:3000
+echo "  ✅ localhost:${_CHROMA_PORT} → ChromaDB"
+echo "  ✅ localhost:${_BOLT_PORT} → Memgraph Bolt"
+echo "  ✅ localhost:${_LAB_PORT} → Memgraph Lab"
 
 # ── 4. MCP Server ─────────────────────────────────────────────
 echo ""
@@ -171,7 +174,7 @@ fi
 
 if [ -f /workspace/mcp-server/dist/index.js ]; then
   start_service mcp-server node /workspace/mcp-server/dist/index.js
-  wait_http "http://localhost:3100/health" "MCP Server (http://localhost:3100)" 15
+  wait_http "http://localhost:${MCP_SERVER_PORT:-13100}/health" "MCP Server (http://localhost:${MCP_SERVER_PORT:-13100})" 15
 else
   echo "  ❌ MCP Server NOT started — no build artifacts"
 fi
@@ -181,10 +184,10 @@ echo ""
 echo "╔══════════════════════════════════════════════╗"
 echo "║  📋 Service Endpoints                        ║"
 echo "╠══════════════════════════════════════════════╣"
-echo "║  MCP Server  │ http://localhost:3100/mcp     ║"
-echo "║  ChromaDB    │ http://localhost:8000         ║"
-echo "║  Memgraph    │ bolt://localhost:7687         ║"
-echo "║  Memgraph UI │ http://localhost:3000         ║"
+echo "║  MCP Server  │ http://localhost:${MCP_SERVER_PORT:-13100}/mcp     ║"
+echo "║  ChromaDB    │ http://localhost:${_CHROMA_PORT}         ║"
+echo "║  Memgraph    │ bolt://localhost:${_BOLT_PORT}         ║"
+echo "║  Memgraph UI │ http://localhost:${_LAB_PORT}         ║"
 echo "╠══════════════════════════════════════════════╣"
 echo "║  Logs → /tmp/nexus/*.log                     ║"
 echo "║  Re-run → bash /workspace/scripts/start-services.sh ║"
