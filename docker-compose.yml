@@ -35,9 +35,9 @@ services:
       test:
         [
           "CMD",
-          "python3",
+          "bash",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v2/heartbeat')",
+          "exec 3<>/dev/tcp/127.0.0.1/8000 && echo OK || exit 1",
         ]
       interval: 10s
       timeout: 5s
