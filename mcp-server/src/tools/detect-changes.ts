@@ -8,6 +8,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { execSync } from "node:child_process";
 import { MemgraphClient } from "../clients/memgraph.js";
+import { diffSnapshots } from "@nexus-hub/common-tools";
+import { scoreHotspots } from "@nexus-hub/common-tools";
+import type { GraphSnapshot } from "@nexus-hub/common-tools";
 
 // ── Git Diff Parsing ─────────────────────────────────────────
 
@@ -209,6 +212,74 @@ export function registerDetectChangesTool(
           low: analysis.filter((a) => a.risk.level === "low").length,
         };
 
+        // C4: Architecture diff — load previous snapshot from Service node
+        let architectureDiff = null;
+        try {
+          const snapRows = await memgraph.query(
+            `MATCH (s:Service {name: $service})
+             WHERE s.lastSnapshot IS NOT NULL
+             RETURN s.lastSnapshot AS snap, s.lastSnapshotCommit AS commit`,
+            { service: serviceName },
+          );
+          if (snapRows.length > 0 && snapRows[0].snap) {
+            const previousSnapshot: GraphSnapshot = JSON.parse(
+              String(snapRows[0].snap),
+            );
+            // Build a current snapshot inline for comparison
+            const nodeCounts: Record<string, number> = {};
+            for (const label of [
+              "Function",
+              "Class",
+              "APIRoute",
+              "GRPCEndpoint",
+              "KafkaTopic",
+            ]) {
+              const rows = await memgraph.query(
+                `MATCH (n:${label} {service: $service}) RETURN count(n) AS cnt`,
+                { service: serviceName },
+              );
+              nodeCounts[label] = Number(
+                (rows[0]?.cnt as { low?: number })?.low ?? rows[0]?.cnt ?? 0,
+              );
+            }
+            const routeRows = await memgraph.query(
+              `MATCH (r:APIRoute {service: $service}) RETURN r.path AS path, r.method AS method`,
+              { service: serviceName },
+            );
+            const currentSnapshot: GraphSnapshot = {
+              service: serviceName,
+              commit: ref,
+              takenAt: Date.now(),
+              nodeCounts,
+              edgeCounts: {},
+              apiRoutes: routeRows.map((r) => ({
+                path: String(r.path ?? ""),
+                method: String(r.method ?? "GET"),
+              })),
+              grpcEndpoints: [],
+              kafkaTopics: [],
+            };
+            architectureDiff = diffSnapshots(previousSnapshot, currentSnapshot);
+          }
+        } catch {
+          // non-blocking
+        }
+
+        // C4: Hotspots top 10
+        let hotspots = null;
+        try {
+          hotspots = await scoreHotspots(
+            {
+              write: (c, p) => memgraph.write(c, p ?? {}),
+              query: (c, p) => memgraph.query(c, p ?? {}),
+            },
+            serviceName,
+            10,
+          );
+        } catch {
+          // non-blocking
+        }
+
         return {
           content: [
             {
@@ -220,6 +291,8 @@ export function registerDetectChangesTool(
                   totalChangedFiles: changedFiles.length,
                   riskSummary: riskCounts,
                   analysis,
+                  architectureDiff,
+                  hotspots,
                 },
                 null,
                 2,

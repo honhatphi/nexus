@@ -14,6 +14,7 @@ import {
   registerProcessFlowsTool,
   registerResources,
 } from "./tools/resources.js";
+import { registerScanRisksTool } from "./tools/scan-risks.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -21,6 +22,30 @@ async function main(): Promise<void> {
   // ── Initialize DB clients ──────────────────────────────────
   const memgraph = new MemgraphClient(config.memgraph);
   const chromadb = new ChromaDBClient(config.chromadb);
+
+  // ── A1: Bootstrap ChromaDB collection ─────────────────────
+  try {
+    await chromadb.bootstrap();
+    console.log("  ChromaDB     : collection ready");
+  } catch (err) {
+    console.warn(`  ChromaDB     : bootstrap warning — ${err}`);
+  }
+
+  // ── A7: Ensure Memgraph uniqueness constraints ─────────────
+  const constraints = [
+    `CREATE CONSTRAINT ON (f:Function) ASSERT (f.name, f.file, f.service) IS NODE KEY`,
+    `CREATE CONSTRAINT ON (r:APIRoute) ASSERT (r.path, r.method, r.service) IS NODE KEY`,
+    `CREATE CONSTRAINT ON (s:Service) ASSERT s.name IS UNIQUE`,
+    `CREATE CONSTRAINT ON (f:File) ASSERT (f.path, f.service) IS NODE KEY`,
+  ];
+  for (const cypher of constraints) {
+    try {
+      await memgraph.write(cypher, {});
+    } catch {
+      // Constraint already exists — safe to ignore
+    }
+  }
+  console.log("  Memgraph     : constraints applied");
 
   // ── HTTP transport (Streamable HTTP) ───────────────────────
   const httpServer = http.createServer(async (req, res) => {
@@ -46,6 +71,7 @@ async function main(): Promise<void> {
       registerAugmentTool(server, memgraph);
       registerProcessFlowsTool(server, memgraph);
       registerResources(server, memgraph);
+      registerScanRisksTool(server, memgraph);
 
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,

@@ -75,4 +75,83 @@ export class ChromaDBClient {
     const collection = await this.getCollection();
     await collection.delete({ ids });
   }
+
+  /**
+   * Fetch metadata for a list of document IDs.
+   * Returns only the IDs that exist in the collection.
+   */
+  async getByIds(
+    ids: string[],
+  ): Promise<Array<{ id: string; metadata: Record<string, unknown> }>> {
+    if (ids.length === 0) return [];
+    const collection = await this.getCollection();
+    const result = await collection.get({
+      ids,
+      include: ["metadatas"] as any,
+    });
+    return (result.ids ?? []).map((id, i) => ({
+      id,
+      metadata: (result.metadatas?.[i] as Record<string, unknown> | null) ?? {},
+    }));
+  }
+
+  /**
+   * Increment hit_count for a list of ChromaDB document IDs and record
+   * last_queried timestamp. Designed for fire-and-forget — swallows errors.
+   *
+   * This feeds the Learning Layer: frequently-queried chunks surface higher
+   * in reranked search results (see applyHitCountBoost in search.ts).
+   */
+  async incrementHitCount(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    try {
+      const collection = await this.getCollection();
+      const existing = await collection.get({
+        ids,
+        include: ["metadatas"] as any,
+      });
+      if (!existing.ids?.length) return;
+
+      const nowIso = new Date().toISOString();
+      const updatedMetadatas = (existing.metadatas ?? []).map((meta) => ({
+        ...((meta as Record<string, unknown>) ?? {}),
+        hit_count:
+          (((meta as Record<string, unknown>)?.hit_count as number) ?? 0) + 1,
+        last_queried: nowIso,
+      }));
+
+      await collection.update({
+        ids: existing.ids,
+        metadatas: updatedMetadatas,
+      });
+    } catch {
+      // Non-critical — swallow errors silently
+    }
+  }
+
+  /**
+   * Bootstrap: ensure the collection exists, then verify it's reachable.
+   * Safe to call multiple times — idempotent.
+   * Throws if ChromaDB is unreachable or collection cannot be created.
+   */
+  async bootstrap(): Promise<void> {
+    // getOrCreateCollection already creates if absent; just force the call
+    this.collection = null; // reset so getCollection re-runs
+    const col = await this.getCollection();
+    // Verify by counting — throws if server is unresponsive
+    await col.count();
+  }
+
+  /**
+   * Health check: returns true if ChromaDB is reachable and collection is ready.
+   * Never throws — returns false on any error.
+   */
+  async healthCheck(): Promise<{ ok: boolean; error?: string }> {
+    try {
+      await this.bootstrap();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: String(err) };
+    }
+  }
 }

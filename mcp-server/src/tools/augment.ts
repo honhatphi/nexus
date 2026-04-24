@@ -9,6 +9,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { MemgraphClient } from "../clients/memgraph.js";
+import { promoteCandidate, rejectCandidate } from "@nexus-hub/common-tools";
 
 /**
  * Compact context shape returned by augment — optimized for
@@ -52,9 +53,150 @@ export function registerAugmentTool(
         .describe(
           "Maximum number of matching symbols to enrich (1–10, default 5).",
         ),
+      action: z
+        .enum([
+          "search",
+          "promoteCandidate",
+          "rejectCandidate",
+          "listCandidates",
+        ])
+        .default("search")
+        .describe(
+          "'search' (default): symbol enrichment. " +
+            "'promoteCandidate': approve a CandidatePattern (requires candidateId + approvedAs). " +
+            "'rejectCandidate': reject a CandidatePattern (requires candidateId + reason). " +
+            "'listCandidates': list all pending CandidatePatterns for a service.",
+        ),
+      candidateId: z
+        .string()
+        .optional()
+        .describe("CandidatePattern id for promote/reject actions."),
+      approvedAs: z
+        .string()
+        .optional()
+        .describe("InfraKind to promote the candidate to."),
+      reason: z
+        .string()
+        .optional()
+        .describe("Rejection reason for rejectCandidate action."),
     },
-    async ({ pattern, service, limit }) => {
+    async ({
+      pattern,
+      service,
+      limit,
+      action,
+      candidateId,
+      approvedAs,
+      reason,
+    }) => {
       try {
+        // D3: Candidate management actions
+        if (action === "promoteCandidate") {
+          if (!candidateId || !approvedAs) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error:
+                      "candidateId and approvedAs are required for promoteCandidate",
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          const graphClient = {
+            write: (c: string, p?: Record<string, unknown>) =>
+              memgraph.write(c, p ?? {}),
+            query: (c: string, p?: Record<string, unknown>) =>
+              memgraph.query(c, p ?? {}),
+          };
+          const result = await promoteCandidate(
+            graphClient,
+            candidateId,
+            approvedAs,
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  action: "promoteCandidate",
+                  candidateId,
+                  approvedAs,
+                  ...result,
+                }),
+              },
+            ],
+          };
+        }
+
+        if (action === "rejectCandidate") {
+          if (!candidateId) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: "candidateId is required for rejectCandidate",
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          const graphClient = {
+            write: (c: string, p?: Record<string, unknown>) =>
+              memgraph.write(c, p ?? {}),
+            query: (c: string, p?: Record<string, unknown>) =>
+              memgraph.query(c, p ?? {}),
+          };
+          const result = await rejectCandidate(
+            graphClient,
+            candidateId,
+            reason ?? "",
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  action: "rejectCandidate",
+                  candidateId,
+                  ...result,
+                }),
+              },
+            ],
+          };
+        }
+
+        if (action === "listCandidates") {
+          const rows = await memgraph.query(
+            `MATCH (cp:CandidatePattern)
+             WHERE $service = '' OR cp.service = $service
+             RETURN cp.id AS id, cp.service AS service, cp.file AS file,
+                    cp.pattern AS pattern, cp.status AS status,
+                    cp.confidence AS confidence, cp.detectedAt AS detectedAt
+             ORDER BY cp.detectedAt DESC
+             LIMIT 50`,
+            { service: service ?? "" },
+          );
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  action: "listCandidates",
+                  count: rows.length,
+                  candidates: rows,
+                }),
+              },
+            ],
+          };
+        }
+
+        // Default: symbol enrichment search
         // Escape special regex characters
         const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const svcFilter = service ? "AND n.service = $service" : "";

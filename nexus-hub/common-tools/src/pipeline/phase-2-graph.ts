@@ -14,6 +14,8 @@ import type {
   PhaseResult,
   GraphClient,
 } from "./types.js";
+import { SCHEMA_VERSION } from "./schema-registry.js";
+import { recordCandidatePattern } from "./candidate-pattern.js";
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -66,20 +68,27 @@ async function upsertSymbolsToGraph(
   let relsCreated = 0;
 
   // Service node
-  await graph.write(`MERGE (s:Service {name: $service})`, {
-    service: serviceName,
-  });
+  await graph.write(
+    `MERGE (s:Service {name: $service})
+     ON CREATE SET s.firstSeenAt = timestamp(), s.source = 'code'
+     SET s.schemaVersion = $sv, s.lastSeenAt = timestamp()`,
+    { service: serviceName, sv: SCHEMA_VERSION },
+  );
 
   // File node + edge
   await graph.write(
-    `MERGE (fi:File {path: $file})
+    `MERGE (fi:File {path: $file, service: $service})
+     ON CREATE SET fi.firstSeenAt = timestamp(), fi.source = 'code'
+     SET fi.schemaVersion = $sv, fi.lastSeenAt = timestamp(),
+         fi.language = $language
+     WITH fi
      MERGE (s:Service {name: $service})
-     MERGE (fi)-[:BELONGS_TO]->(s)
-     SET fi.language = $language, fi.updatedAt = timestamp()`,
+     MERGE (fi)-[:BELONGS_TO]->(s)`,
     {
       file: parseResult.file,
       service: serviceName,
       language: parseResult.language,
+      sv: SCHEMA_VERSION,
     },
   );
 
@@ -88,16 +97,18 @@ async function upsertSymbolsToGraph(
 
     await graph.write(
       `MERGE (f:Function {name: $name, file: $file, service: $service})
-       SET f.kind       = $kind,
-           f.language   = $language,
-           f.returnType = $returnType,
-           f.startLine  = $startLine,
-           f.endLine    = $endLine,
-           f.signature  = $signature,
-           f.docstring  = $docstring,
-           f.updatedAt  = timestamp()
+       ON CREATE SET f.firstSeenAt = timestamp(), f.source = 'code'
+       SET f.schemaVersion = $sv,
+           f.lastSeenAt  = timestamp(),
+           f.kind        = $kind,
+           f.language    = $language,
+           f.returnType  = $returnType,
+           f.startLine   = $startLine,
+           f.endLine     = $endLine,
+           f.signature   = $signature,
+           f.docstring   = $docstring
        WITH f
-       MERGE (fi:File {path: $file})
+       MERGE (fi:File {path: $file, service: $service})
        MERGE (f)-[:DEFINED_IN]->(fi)`,
       {
         name: sym.name,
@@ -110,6 +121,7 @@ async function upsertSymbolsToGraph(
         endLine: sym.endLine,
         signature,
         docstring: sym.docstring ?? "",
+        sv: SCHEMA_VERSION,
       },
     );
     nodesUpserted++;
@@ -219,10 +231,14 @@ async function upsertInfraToGraph(
   for (const cls of parseResult.classes) {
     await graph.write(
       `MERGE (c:Class {name: $name, file: $file, service: $service})
-       SET c.startLine = $startLine, c.endLine = $endLine,
-           c.docstring = $docstring, c.updatedAt = timestamp()
+       ON CREATE SET c.firstSeenAt = timestamp(), c.source = 'code'
+       SET c.schemaVersion = $sv,
+           c.lastSeenAt = timestamp(),
+           c.startLine = $startLine,
+           c.endLine   = $endLine,
+           c.docstring = $docstring
        WITH c
-       MERGE (fi:File {path: $file})
+       MERGE (fi:File {path: $file, service: $service})
        MERGE (c)-[:DEFINED_IN]->(fi)`,
       {
         name: cls.name,
@@ -231,6 +247,7 @@ async function upsertInfraToGraph(
         startLine: cls.startLine,
         endLine: cls.endLine,
         docstring: cls.docstring ?? "",
+        sv: SCHEMA_VERSION,
       },
     );
     infraNodes++;
@@ -275,7 +292,19 @@ async function upsertInfraToGraph(
 
     const label = INFRA_LABELS[ip.kind];
     const edge = INFRA_EDGE[ip.kind];
-    if (!label || !edge) continue;
+    if (!label || !edge) {
+      // D2: Unknown pattern — record as CandidatePattern for human review
+      await recordCandidatePattern(graph, {
+        service: serviceName,
+        file: parseResult.file,
+        line: ip.line,
+        pattern: ip.kind,
+        rawCode: ip.target,
+        confidence: 0.3,
+        status: "pending",
+      }).catch(() => {}); // never crash the pipeline
+      continue;
+    }
 
     const ownerFn = parseResult.functions.find(
       (fn) => fn.startLine <= ip.line && ip.line <= fn.endLine,
@@ -288,16 +317,19 @@ async function upsertInfraToGraph(
       const method = ip.metadata?.method ?? "GET";
       await graph.write(
         `MERGE (t:APIRoute {path: $path, method: $method, service: $service})
-         SET t.name = $path,
+         ON CREATE SET t.firstSeenAt = timestamp()
+         SET t.schemaVersion = $sv,
+             t.lastSeenAt  = timestamp(),
+             t.name        = $path,
              t.operationId = $operationId,
-             t.source = $source,
-             t.updatedAt = timestamp()`,
+             t.source      = $source`,
         {
           path: ip.target,
           method,
           service: serviceName,
           operationId: ip.metadata?.operationId ?? "",
           source: ip.metadata?.source ?? "code",
+          sv: SCHEMA_VERSION,
         },
       );
     } else if (ip.kind === "grpc_call" || ip.kind === "grpc_serve") {
@@ -305,22 +337,25 @@ async function upsertInfraToGraph(
       const grpcService = ip.metadata?.service ?? ip.target;
       await graph.write(
         `MERGE (t:GRPCEndpoint {name: $name, service: $grpcService})
-         SET t.updatedAt = timestamp()`,
-        { name: ip.target, grpcService },
+         ON CREATE SET t.firstSeenAt = timestamp(), t.source = 'grpc_proto'
+         SET t.schemaVersion = $sv, t.lastSeenAt = timestamp()`,
+        { name: ip.target, grpcService, sv: SCHEMA_VERSION },
       );
     } else if (QUEUE_TYPE[ip.kind]) {
       // MessageQueue / MessageChannel — include broker type
       const queueType = QUEUE_TYPE[ip.kind];
       await graph.write(
         `MERGE (t:${label} {name: $target, type: $queueType})
-         SET t.updatedAt = timestamp()`,
-        { target: ip.target, queueType },
+         ON CREATE SET t.firstSeenAt = timestamp(), t.source = 'code'
+         SET t.schemaVersion = $sv, t.lastSeenAt = timestamp()`,
+        { target: ip.target, queueType, sv: SCHEMA_VERSION },
       );
     } else {
       await graph.write(
         `MERGE (t:${label} {name: $target})
-         SET t.type = $dbType, t.updatedAt = timestamp()`,
-        { target: ip.target, dbType },
+         ON CREATE SET t.firstSeenAt = timestamp(), t.source = 'code'
+         SET t.type = $dbType, t.schemaVersion = $sv, t.lastSeenAt = timestamp()`,
+        { target: ip.target, dbType, sv: SCHEMA_VERSION },
       );
     }
     infraNodes++;

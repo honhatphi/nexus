@@ -17,7 +17,7 @@
 │   ├── common-tools/    ← TypeScript pipeline + parsers (source of truth)    │
 │   └── skills/          ← Agent skill definitions (code-review, debugging…)  │
 │                                                                             │
-│   mcp-server/          ← MCP HTTP gateway (port 3100) — 10 tools            │
+│   mcp-server/          ← MCP HTTP gateway (port 13100) — 10 tools           │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
          ▲  sync_service_knowledge(path)          ▲  query / search
@@ -174,7 +174,7 @@ Developer                 Git Remote              Nexus MCP            KB
 # Log kết quả vào ~/.nexus/sync.log
 # Incremental: force_update=false — CHỈ re-parse file có thay đổi, không chạy lại toàn bộ
 # Silent fail nếu MCP unavailable — ghi warning vào log, không crash
-NEXUS_MCP_URL="${NEXUS_MCP_URL:-http://localhost:3100}"
+NEXUS_MCP_URL="${NEXUS_MCP_URL:-http://localhost:13100}"
 ```
 
 **Cài đặt global (1 lần trên máy, áp dụng cho mọi repo):**
@@ -242,7 +242,7 @@ bash /path/to/nexus/scripts/install-global-hooks.sh
   - **`post-push`** — chạy async sau push → gọi `sync_service_knowledge` với `force_update=false` cho repo hiện tại
   - **`post-merge`** — chạy async sau pull/merge khi `MERGE_HEAD` tồn tại → incremental sync chỉ file thay đổi
   - Hook **không block** push/pull, **không can thiệp CI/CD** của external service — chỉ local
-  - Config qua `NEXUS_MCP_URL` env var (default: `http://localhost:3100`), log vào `~/.nexus/sync.log`
+  - Config qua `NEXUS_MCP_URL` env var (default: `http://localhost:13100`), log vào `~/.nexus/sync.log`
 - [ ] **A4** Tạo script `scripts/install-global-hooks.sh` — cài 1 lần trên máy, áp dụng cho **mọi repo** qua `git config --global core.hooksPath ~/.nexus/hooks/`.
 - [ ] **A5** Onboard ít nhất 1 external service thứ hai vào KB qua Hub Manager (gọi `sync_service_knowledge`), ưu tiên service có REST API hoặc gRPC để cross-service edges có thể hình thành.
 - [ ] **A6** Viết integration test `test-cross-service.mjs` — verify `HTTP_TRIGGERS` / `ASYNC_TRIGGERS` count > 0.
@@ -422,7 +422,7 @@ cd nexus-hub/common-tools && npm run build
 cd mcp-server && npm run build && node dist/index.js &
 
 # 3. Xác nhận server healthy
-curl http://localhost:3100/health
+curl http://localhost:13100/health
 
 # 4. Đảm bảo external service repos đã được clone về local
 #    (services nằm ngoài Nexus repo, có path riêng)
@@ -433,8 +433,8 @@ ls /path/to/service-b
 bash scripts/install-global-hooks.sh
 # → git config --global core.hooksPath ~/.nexus/hooks/
 
-# 6. Set NEXUS_MCP_URL nếu MCP không chạy ở localhost:3100
-export NEXUS_MCP_URL=http://localhost:3100
+# 6. Set NEXUS_MCP_URL nếu MCP không chạy ở localhost:13100
+export NEXUS_MCP_URL=http://localhost:13100
 ```
 
 ### 4.2 Test Scenarios
