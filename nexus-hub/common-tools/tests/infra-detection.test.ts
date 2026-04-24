@@ -363,3 +363,115 @@ class UserService {
     expect(grpc).toBeDefined();
   });
 });
+
+// ─────────────────────────────────────────────────────────────
+// P2: Extended async messaging detection
+// ─────────────────────────────────────────────────────────────
+
+describe("Infrastructure Detection — RabbitMQ", () => {
+  it("detects channel.basic_publish (Python)", async () => {
+    const py = `
+def send_notification(message):
+    channel.basic_publish(exchange='', routing_key='notifications', body=message)
+`;
+    const result = await parser.parseSource("rabbit_producer.py", py);
+    const rmq = result.infraPatterns.find(
+      (p) => p.kind === "rabbitmq_publish",
+    );
+    expect(rmq).toBeDefined();
+  });
+
+  it("detects channel.basic_consume (Python)", async () => {
+    const py = `
+def start_consumer():
+    channel.basic_consume(queue='orders', on_message_callback=callback)
+    channel.start_consuming()
+`;
+    const result = await parser.parseSource("rabbit_consumer.py", py);
+    const rmq = result.infraPatterns.find(
+      (p) => p.kind === "rabbitmq_consume",
+    );
+    expect(rmq).toBeDefined();
+  });
+
+  it("detects channel.sendToQueue (JS/TS amqplib)", async () => {
+    const ts = `
+async function publishOrder(order: Order) {
+  await channel.sendToQueue("order-queue", Buffer.from(JSON.stringify(order)));
+}
+`;
+    const result = await parser.parseSource("publisher.ts", ts);
+    const rmq = result.infraPatterns.find(
+      (p) => p.kind === "rabbitmq_publish",
+    );
+    expect(rmq).toBeDefined();
+  });
+});
+
+describe("Infrastructure Detection — Redis Pub/Sub", () => {
+  it("detects subscriber.subscribe (JS/TS)", async () => {
+    const ts = `
+async function listenToEvents() {
+  await subscriber.subscribe("user-events", (message) => {
+    console.log(message);
+  });
+}
+`;
+    const result = await parser.parseSource("redis_sub.ts", ts);
+    const redisSub = result.infraPatterns.find(
+      (p) => p.kind === "redis_subscribe",
+    );
+    expect(redisSub).toBeDefined();
+  });
+});
+
+describe("Infrastructure Detection — NATS", () => {
+  it("detects nc.publish (JS/TS)", async () => {
+    const ts = `
+async function publishEvent(data: string) {
+  await nc.publish("events.created", data);
+}
+`;
+    const result = await parser.parseSource("nats_pub.ts", ts);
+    const nats = result.infraPatterns.find((p) => p.kind === "nats_publish");
+    expect(nats).toBeDefined();
+  });
+
+  it("detects nc.subscribe (JS/TS)", async () => {
+    const ts = `
+async function subscribeToEvents() {
+  nc.subscribe("events.>", (msg) => {
+    console.log(msg.data);
+  });
+}
+`;
+    const result = await parser.parseSource("nats_sub.ts", ts);
+    const nats = result.infraPatterns.find(
+      (p) => p.kind === "nats_subscribe",
+    );
+    expect(nats).toBeDefined();
+  });
+});
+
+describe("Infrastructure Detection — SQS", () => {
+  it("detects sqs.send_message (Python boto3)", async () => {
+    const py = `
+def send_to_sqs(queue_url, message):
+    sqs.send_message(QueueUrl=queue_url, MessageBody=message)
+`;
+    const result = await parser.parseSource("sqs_producer.py", py);
+    const sqsSend = result.infraPatterns.find((p) => p.kind === "sqs_send");
+    expect(sqsSend).toBeDefined();
+  });
+
+  it("detects sqs.receive_message (Python boto3)", async () => {
+    const py = `
+def poll_queue(queue_url):
+    response = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=10)
+    return response.get('Messages', [])
+`;
+    const result = await parser.parseSource("sqs_consumer.py", py);
+    const sqsRecv = result.infraPatterns.find((p) => p.kind === "sqs_receive");
+    expect(sqsRecv).toBeDefined();
+  });
+});

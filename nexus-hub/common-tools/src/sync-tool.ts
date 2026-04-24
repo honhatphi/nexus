@@ -33,6 +33,7 @@ import { communityPhase } from "./pipeline/phase-7-community.js";
 import { kafkaLinkagePhase } from "./pipeline/phase-8a-kafka-linkage.js";
 import { httpLinkagePhase } from "./pipeline/phase-8b-http-linkage.js";
 import { grpcLinkagePhase } from "./pipeline/phase-8c-grpc-linkage.js";
+import { messagingLinkagePhase } from "./pipeline/phase-8d-messaging-linkage.js";
 import { processTracingPhase } from "./pipeline/phase-8-process.js";
 import { typeResolutionPhase } from "./pipeline/phase-9-types.js";
 
@@ -126,6 +127,7 @@ export class SyncServiceKnowledge {
       .register(kafkaLinkagePhase)
       .register(httpLinkagePhase)
       .register(grpcLinkagePhase)
+      .register(messagingLinkagePhase)
       .register(processTracingPhase)
       .register(typeResolutionPhase);
   }

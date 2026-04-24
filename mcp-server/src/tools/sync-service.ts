@@ -17,6 +17,7 @@ import {
   kafkaLinkagePhase,
   httpLinkagePhase,
   grpcLinkagePhase,
+  messagingLinkagePhase,
   processTracingPhase,
   typeResolutionPhase,
 } from "@nexus-hub/common-tools";
@@ -64,6 +65,7 @@ export function registerSyncTool(
     .register(kafkaLinkagePhase)
     .register(httpLinkagePhase)
     .register(grpcLinkagePhase)
+    .register(messagingLinkagePhase)
     .register(processTracingPhase)
     .register(typeResolutionPhase);
 

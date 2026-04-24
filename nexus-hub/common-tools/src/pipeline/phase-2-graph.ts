@@ -159,6 +159,14 @@ const INFRA_LABELS: Record<string, string> = {
   http_route_define: "APIRoute",
   grpc_call: "GRPCEndpoint",
   grpc_serve: "GRPCEndpoint",
+  rabbitmq_publish: "MessageQueue",
+  rabbitmq_consume: "MessageQueue",
+  redis_publish: "MessageChannel",
+  redis_subscribe: "MessageChannel",
+  sqs_send: "MessageQueue",
+  sqs_receive: "MessageQueue",
+  nats_publish: "MessageChannel",
+  nats_subscribe: "MessageChannel",
 };
 
 const INFRA_EDGE: Record<string, string> = {
@@ -171,6 +179,26 @@ const INFRA_EDGE: Record<string, string> = {
   http_route_define: "EXPOSES",
   grpc_call: "GRPC_CALL",
   grpc_serve: "GRPC_HANDLES",
+  rabbitmq_publish: "PUBLISHES_TO",
+  rabbitmq_consume: "CONSUMES_FROM",
+  redis_publish: "PUBLISHES_TO",
+  redis_subscribe: "SUBSCRIBES_TO",
+  sqs_send: "SENDS_TO",
+  sqs_receive: "RECEIVES_FROM",
+  nats_publish: "PUBLISHES_TO",
+  nats_subscribe: "SUBSCRIBES_TO",
+};
+
+// Queue/channel type labels for MessageQueue nodes
+const QUEUE_TYPE: Record<string, string> = {
+  rabbitmq_publish: "rabbitmq",
+  rabbitmq_consume: "rabbitmq",
+  redis_publish: "redis",
+  redis_subscribe: "redis",
+  sqs_send: "sqs",
+  sqs_receive: "sqs",
+  nats_publish: "nats",
+  nats_subscribe: "nats",
 };
 
 const DB_TYPE: Record<string, string> = {
@@ -279,6 +307,14 @@ async function upsertInfraToGraph(
         `MERGE (t:GRPCEndpoint {name: $name, service: $grpcService})
          SET t.updatedAt = timestamp()`,
         { name: ip.target, grpcService },
+      );
+    } else if (QUEUE_TYPE[ip.kind]) {
+      // MessageQueue / MessageChannel — include broker type
+      const queueType = QUEUE_TYPE[ip.kind];
+      await graph.write(
+        `MERGE (t:${label} {name: $target, type: $queueType})
+         SET t.updatedAt = timestamp()`,
+        { target: ip.target, queueType },
       );
     } else {
       await graph.write(

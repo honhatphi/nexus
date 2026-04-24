@@ -62,6 +62,14 @@ export type InfraKind =
   | "http_route_define"
   | "grpc_call"
   | "grpc_serve"
+  | "rabbitmq_publish"
+  | "rabbitmq_consume"
+  | "redis_publish"
+  | "redis_subscribe"
+  | "sqs_send"
+  | "sqs_receive"
+  | "nats_publish"
+  | "nats_subscribe"
   | "class_inherit";
 
 /**

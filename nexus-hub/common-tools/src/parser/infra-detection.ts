@@ -272,6 +272,130 @@ const INFRA_RULES: InfraRule[] = [
     fallbackTarget: "<grpc-service>",
     detailTemplate: "gRPC service: {target}",
   },
+  // ── RabbitMQ ────────────────────────────────────────────────────
+  // Python: channel.basic_publish(exchange, routing_key, body)
+  {
+    pattern: /\.basic_publish$|channel\.publish$/,
+    kind: "rabbitmq_publish",
+    targetArg: 1, // routing_key is arg 1
+    fallbackTarget: "<routing-key>",
+    detailTemplate: "RabbitMQ publish to: {target}",
+  },
+  // Python: channel.basic_consume(queue, callback)
+  {
+    pattern: /\.basic_consume$|channel\.consume$/,
+    kind: "rabbitmq_consume",
+    targetArg: 0,
+    fallbackTarget: "<queue>",
+    detailTemplate: "RabbitMQ consume from: {target}",
+  },
+  // JS/TS: channel.sendToQueue(queue, content) / amqplib
+  {
+    pattern: /\.sendToQueue$|amqplib\.connect$/,
+    kind: "rabbitmq_publish",
+    targetArg: 0,
+    fallbackTarget: "<queue>",
+    detailTemplate: "RabbitMQ publish to: {target}",
+  },
+  // JS/TS: channel.consume(queue, handler) / amqplib
+  {
+    pattern: /\.assertQueue$|channel\.ack$|amqp\.createChannel$/,
+    kind: "rabbitmq_consume",
+    targetArg: 0,
+    fallbackTarget: "<queue>",
+    detailTemplate: "RabbitMQ consume from: {target}",
+  },
+  // ── Redis Pub/Sub ──────────────────────────────────────────
+  // Python: redis_client.publish(channel, message)
+  {
+    pattern: /redis\.publish$|r\.publish$|client\.publish$/,
+    kind: "redis_publish",
+    targetArg: 0,
+    fallbackTarget: "<channel>",
+    detailTemplate: "Redis publish to channel: {target}",
+  },
+  // Python/JS: pubsub.subscribe(channel) / client.subscribe(channel)
+  {
+    pattern: /pubsub\.subscribe$|\.psubscribe$|redis\.subscribe$/,
+    kind: "redis_subscribe",
+    targetArg: 0,
+    fallbackTarget: "<channel>",
+    detailTemplate: "Redis subscribe to channel: {target}",
+  },
+  // JS/TS: subscriber.subscribe(channel) — ioredis / node-redis
+  {
+    pattern: /subscriber\.subscribe$|sub\.subscribe$/,
+    kind: "redis_subscribe",
+    targetArg: 0,
+    fallbackTarget: "<channel>",
+    detailTemplate: "Redis subscribe to channel: {target}",
+  },
+  // ── AWS SQS ──────────────────────────────────────────────────
+  // Python boto3: sqs.send_message(QueueUrl=..., MessageBody=...)
+  {
+    pattern: /\.send_message$|sqs\.send_message$/,
+    kind: "sqs_send",
+    targetArg: 0,
+    fallbackTarget: "<queue-url>",
+    detailTemplate: "SQS send to: {target}",
+    metadataKeys: ["QueueUrl"],
+  },
+  // Python boto3: sqs.receive_message(QueueUrl=...)
+  {
+    pattern: /\.receive_message$|sqs\.receive_message$/,
+    kind: "sqs_receive",
+    targetArg: 0,
+    fallbackTarget: "<queue-url>",
+    detailTemplate: "SQS receive from: {target}",
+    metadataKeys: ["QueueUrl"],
+  },
+  // JS/TS AWS SDK v3: SendMessageCommand, ReceiveMessageCommand
+  {
+    pattern: /new SendMessageCommand$|SQSClient\.send$/,
+    kind: "sqs_send",
+    targetArg: 0,
+    fallbackTarget: "<queue-url>",
+    detailTemplate: "SQS send: {target}",
+  },
+  {
+    pattern: /new ReceiveMessageCommand$/,
+    kind: "sqs_receive",
+    targetArg: 0,
+    fallbackTarget: "<queue-url>",
+    detailTemplate: "SQS receive: {target}",
+  },
+  // ── NATS ────────────────────────────────────────────────────────
+  // JS/TS: nc.publish(subject, data)
+  {
+    pattern: /nc\.publish$|nats\.publish$|js\.publish$/,
+    kind: "nats_publish",
+    targetArg: 0,
+    fallbackTarget: "<subject>",
+    detailTemplate: "NATS publish to: {target}",
+  },
+  // JS/TS: nc.subscribe(subject, handler)
+  {
+    pattern: /nc\.subscribe$|nats\.subscribe$|js\.subscribe$/,
+    kind: "nats_subscribe",
+    targetArg: 0,
+    fallbackTarget: "<subject>",
+    detailTemplate: "NATS subscribe to: {target}",
+  },
+  // Go: nc.Publish(subject, data) / nc.Subscribe(subject, handler)
+  {
+    pattern: /nc\.Publish$|conn\.Publish$/,
+    kind: "nats_publish",
+    targetArg: 0,
+    fallbackTarget: "<subject>",
+    detailTemplate: "NATS publish to: {target}",
+  },
+  {
+    pattern: /nc\.Subscribe$|conn\.Subscribe$/,
+    kind: "nats_subscribe",
+    targetArg: 0,
+    fallbackTarget: "<subject>",
+    detailTemplate: "NATS subscribe to: {target}",
+  },
 ];
 
 // ── Detection ────────────────────────────────────────────────

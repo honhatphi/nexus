@@ -11,6 +11,10 @@ import type {
   PhaseResult,
 } from "./types.js";
 import { isOpenApiFile, parseOpenApiSpec } from "../parser/openapi-spec.js";
+import {
+  isDockerComposeFile,
+  parseDockerCompose,
+} from "../parser/docker-compose.js";
 
 export const parsePhase: PipelinePhase = {
   name: "parse",
@@ -29,6 +33,9 @@ export const parsePhase: PipelinePhase = {
         if (isOpenApiFile(file.absolutePath)) {
           // OpenAPI / Swagger spec — use dedicated parser
           parseResult = parseOpenApiSpec(file.absolutePath, file.content);
+        } else if (isDockerComposeFile(file.absolutePath)) {
+          // Docker Compose topology — use dedicated parser
+          parseResult = parseDockerCompose(file.absolutePath, file.content);
         } else {
           parseResult = await deps.parser.parseSource(
             file.absolutePath,
