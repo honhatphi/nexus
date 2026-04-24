@@ -212,7 +212,7 @@ const INFRA_RULES: InfraRule[] = [
     targetArg: 0,
     fallbackTarget: "<url>",
     detailTemplate: "HTTP call to: {target}",
-  },  // ── gRPC Client (caller side) ─────────────────────────────────────
+  }, // ── gRPC Client (caller side) ─────────────────────────────────────
   // Python: stub.SomeMethod(), grpc.insecure_channel(), pb2_grpc.XxxStub()
   {
     pattern: /stub\.\w+$|grpc\.insecure_channel$|pb2_grpc\.\w+Stub$/,
@@ -271,7 +271,8 @@ const INFRA_RULES: InfraRule[] = [
     targetArg: 0,
     fallbackTarget: "<grpc-service>",
     detailTemplate: "gRPC service: {target}",
-  },];
+  },
+];
 
 // ── Detection ────────────────────────────────────────────────
 
