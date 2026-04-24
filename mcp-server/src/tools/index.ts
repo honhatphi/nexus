@@ -131,7 +131,6 @@ export function registerTools(
 
       try {
         const rows = await memgraph.query(cypher, params ?? {});
-        const staleness = await checkAllStaleness(memgraph);
         return {
           content: [
             {
@@ -140,9 +139,6 @@ export function registerTools(
                 {
                   results: rows,
                   count: rows.length,
-                  ...(staleness.length > 0
-                    ? { stalenessWarnings: staleness }
-                    : {}),
                 },
                 null,
                 2,
@@ -229,7 +225,6 @@ export function registerTools(
         }
         // ── End Learning Layer ──────────────────────────────────
 
-        const staleness = await checkAllStaleness(memgraph);
         return {
           content: [
             {
@@ -239,9 +234,6 @@ export function registerTools(
                   results,
                   count: results.length,
                   mode,
-                  ...(staleness.length > 0
-                    ? { stalenessWarnings: staleness }
-                    : {}),
                 },
                 null,
                 2,
@@ -291,7 +283,6 @@ export function registerTools(
       try {
         const deps = await memgraph.getImpact(name, maxDepth, min_confidence);
         const related = await chromadb.search(name, 3);
-        const staleness = await checkAllStaleness(memgraph);
 
         return {
           content: [
@@ -305,9 +296,6 @@ export function registerTools(
                   dependencies: deps,
                   dependencyCount: deps.length,
                   relatedCode: related,
-                  ...(staleness.length > 0
-                    ? { stalenessWarnings: staleness }
-                    : {}),
                 },
                 null,
                 2,
