@@ -156,6 +156,7 @@ const INFRA_LABELS: Record<string, string> = {
   db_mongo: "Database",
   db_elasticsearch: "Database",
   http_request: "HTTPEndpoint",
+  http_route_define: "APIRoute",
 };
 
 const INFRA_EDGE: Record<string, string> = {
@@ -165,6 +166,7 @@ const INFRA_EDGE: Record<string, string> = {
   db_mongo: "CONNECTS_TO",
   db_elasticsearch: "CONNECTS_TO",
   http_request: "HTTP_CALL",
+  http_route_define: "EXPOSES",
 };
 
 const DB_TYPE: Record<string, string> = {
@@ -248,31 +250,60 @@ async function upsertInfraToGraph(
     );
 
     const dbType = DB_TYPE[ip.kind] ?? "";
-    await graph.write(
-      `MERGE (t:${label} {name: $target})
-       SET t.type = $dbType, t.updatedAt = timestamp()`,
-      { target: ip.target, dbType },
-    );
+
+    // APIRoute nodes carry path + method + service as identity/properties
+    if (ip.kind === "http_route_define") {
+      const method = ip.metadata?.method ?? "GET";
+      await graph.write(
+        `MERGE (t:APIRoute {path: $path, method: $method, service: $service})
+         SET t.name = $path, t.updatedAt = timestamp()`,
+        { path: ip.target, method, service: serviceName },
+      );
+    } else {
+      await graph.write(
+        `MERGE (t:${label} {name: $target})
+         SET t.type = $dbType, t.updatedAt = timestamp()`,
+        { target: ip.target, dbType },
+      );
+    }
     infraNodes++;
 
     if (ownerFn) {
       const metaStr = ip.metadata ? JSON.stringify(ip.metadata) : "";
-      await graph.write(
-        `MATCH (f:Function {name: $fnName, file: $file, service: $service})
-         MATCH (t:${label} {name: $target})
-         MERGE (f)-[r:${edge}]->(t)
-         SET r.line = $line, r.detail = $detail, r.metadata = $metadata,
-             r.updatedAt = timestamp()`,
-        {
-          fnName: ownerFn.name,
-          file: parseResult.file,
-          service: serviceName,
-          target: ip.target,
-          line: ip.line,
-          detail: ip.detail,
-          metadata: metaStr,
-        },
-      );
+      if (ip.kind === "http_route_define") {
+        const method = ip.metadata?.method ?? "GET";
+        await graph.write(
+          `MATCH (f:Function {name: $fnName, file: $file, service: $service})
+           MATCH (t:APIRoute {path: $path, method: $method, service: $service})
+           MERGE (f)-[r:EXPOSES]->(t)
+           SET r.line = $line, r.updatedAt = timestamp()`,
+          {
+            fnName: ownerFn.name,
+            file: parseResult.file,
+            service: serviceName,
+            path: ip.target,
+            method,
+            line: ip.line,
+          },
+        );
+      } else {
+        await graph.write(
+          `MATCH (f:Function {name: $fnName, file: $file, service: $service})
+           MATCH (t:${label} {name: $target})
+           MERGE (f)-[r:${edge}]->(t)
+           SET r.line = $line, r.detail = $detail, r.metadata = $metadata,
+               r.updatedAt = timestamp()`,
+          {
+            fnName: ownerFn.name,
+            file: parseResult.file,
+            service: serviceName,
+            target: ip.target,
+            line: ip.line,
+            detail: ip.detail,
+            metadata: metaStr,
+          },
+        );
+      }
       infraRels++;
     } else {
       await graph.write(

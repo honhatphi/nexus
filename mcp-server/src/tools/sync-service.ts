@@ -14,6 +14,8 @@ import {
   importResolutionPhase,
   heritagePhase,
   communityPhase,
+  kafkaLinkagePhase,
+  httpLinkagePhase,
   processTracingPhase,
   typeResolutionPhase,
 } from "@nexus-hub/common-tools";
@@ -58,6 +60,8 @@ export function registerSyncTool(
     .register(importResolutionPhase)
     .register(heritagePhase)
     .register(communityPhase)
+    .register(kafkaLinkagePhase)
+    .register(httpLinkagePhase)
     .register(processTracingPhase)
     .register(typeResolutionPhase);
 

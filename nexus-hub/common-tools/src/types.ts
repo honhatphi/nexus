@@ -59,6 +59,7 @@ export type InfraKind =
   | "db_mongo"
   | "db_elasticsearch"
   | "http_request"
+  | "http_route_define"
   | "class_inherit";
 
 /**

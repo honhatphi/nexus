@@ -15,6 +15,7 @@ Bổ sung các gap trong pipeline để KB có thể liên kết đầy đủ c�
 ## Trạng thái hiện tại (Baseline)
 
 ### Graph nodes/edges đã có
+
 ```
 Nodes:  :Service :File :Function :Class
         :KafkaTopic :Database :HTTPEndpoint
@@ -36,19 +37,20 @@ Edges:  BELONGS_TO  File → Service
 ```
 
 ### Pipeline phases đã có
-| Order | Phase | File | Status |
-|-------|-------|------|--------|
-| 0 | filesystem | phase-0-filesystem.ts | ✅ |
-| 1 | parse | phase-1-parse.ts | ✅ |
-| 2 | graph-upsert | phase-2-graph.ts | ✅ |
-| 3 | vector-upsert | phase-3-vectors.ts | ✅ |
-| 4 | metadata | phase-4-metadata.ts | ✅ |
-| 5 | import-resolution | phase-5-imports.ts | ⚠️ intra-service only |
-| 6 | heritage-detection | phase-6-heritage.ts | ✅ |
-| 7 | community | phase-7-community.ts | ✅ |
-| 7.5 | kafka-linkage | phase-8a-kafka-linkage.ts | ✅ cross-service |
-| 8 | process-tracing | phase-8-process.ts | ✅ |
-| 9 | type-resolution | phase-9-types.ts | ✅ |
+
+| Order | Phase              | File                      | Status                |
+| ----- | ------------------ | ------------------------- | --------------------- |
+| 0     | filesystem         | phase-0-filesystem.ts     | ✅                    |
+| 1     | parse              | phase-1-parse.ts          | ✅                    |
+| 2     | graph-upsert       | phase-2-graph.ts          | ✅                    |
+| 3     | vector-upsert      | phase-3-vectors.ts        | ✅                    |
+| 4     | metadata           | phase-4-metadata.ts       | ✅                    |
+| 5     | import-resolution  | phase-5-imports.ts        | ⚠️ intra-service only |
+| 6     | heritage-detection | phase-6-heritage.ts       | ✅                    |
+| 7     | community          | phase-7-community.ts      | ✅                    |
+| 7.5   | kafka-linkage      | phase-8a-kafka-linkage.ts | ✅ cross-service      |
+| 8     | process-tracing    | phase-8-process.ts        | ✅                    |
+| 9     | type-resolution    | phase-9-types.ts          | ✅                    |
 
 ---
 
@@ -61,6 +63,7 @@ Edges:  BELONGS_TO  File → Service
 **File:** `nexus-hub/common-tools/src/parser/infra-detection.ts`
 
 Rules cần thêm vào `INFRA_RULES`:
+
 ```typescript
 // fetch API (browser + Node 18+)
 { pattern: /^fetch$/, kind: "http_request", targetArg: 0, fallbackTarget: "<url>" }
@@ -93,6 +96,7 @@ JS/TS argument extraction cần xử lý AST nodes: `arguments`, `string`, `temp
 **File:** `nexus-hub/common-tools/src/parser/infra-detection.ts`
 
 Rules BE route detection:
+
 ```typescript
 // Express / Fastify (JS/TS)
 { pattern: /router\.(get|post|put|patch|delete|use)$|app\.(get|post|put|patch|delete)$/, kind: "http_route_define" }
@@ -118,9 +122,10 @@ Edge mới:  EXPOSES   Function → APIRoute
 ```
 
 Thêm vào `INFRA_LABELS` và `INFRA_EDGE`:
+
 ```typescript
-INFRA_LABELS["http_route_define"] = "APIRoute"
-INFRA_EDGE["http_route_define"] = "EXPOSES"
+INFRA_LABELS["http_route_define"] = "APIRoute";
+INFRA_EDGE["http_route_define"] = "EXPOSES";
 ```
 
 ### P0-T4: Tạo phase-8b-http-linkage.ts (tương tự 8a)
@@ -150,6 +155,7 @@ Cypher cốt lõi:
 ### P0-T5: Đăng ký phase-8b vào pipeline + exports
 
 **Files:**
+
 - `nexus-hub/common-tools/src/sync-tool.ts` — register phase
 - `mcp-server/src/tools/sync-service.ts` — register phase
 - `nexus-hub/common-tools/src/index.ts` — export httpLinkagePhase
@@ -157,6 +163,7 @@ Cypher cốt lõi:
 ### P0-T6: Tests cho P0
 
 **Files:**
+
 - `nexus-hub/common-tools/tests/infra-detection.test.ts` — thêm test cases cho JS/TS HTTP rules + route define
 - `nexus-hub/common-tools/tests/pipeline.test.ts` — thêm test cho phase-8b
 
@@ -281,31 +288,34 @@ MERGE (f)-[:DEPENDS_ON_PACKAGE]->(pkg)
 ## Thứ tự file cần tạo/sửa
 
 ### P0 (HTTP — 6 tasks)
-| # | File | Action |
-|---|------|--------|
-| 1 | `nexus-hub/common-tools/src/types.ts` | Thêm `http_route_define` vào `InfraKind` |
-| 2 | `nexus-hub/common-tools/src/parser/infra-detection.ts` | Thêm JS/TS HTTP client rules + BE route rules |
-| 3 | `nexus-hub/common-tools/src/pipeline/phase-2-graph.ts` | Thêm `APIRoute` node + `EXPOSES` edge handling |
-| 4 | `nexus-hub/common-tools/src/pipeline/phase-8b-http-linkage.ts` | **Tạo mới** |
-| 5 | `nexus-hub/common-tools/src/sync-tool.ts` | Register phase-8b |
-| 6 | `mcp-server/src/tools/sync-service.ts` | Register phase-8b |
-| 7 | `nexus-hub/common-tools/src/index.ts` | Export httpLinkagePhase |
-| 8 | `nexus-hub/common-tools/tests/infra-detection.test.ts` | Thêm test cases P0 |
+
+| #   | File                                                           | Action                                         |
+| --- | -------------------------------------------------------------- | ---------------------------------------------- |
+| 1   | `nexus-hub/common-tools/src/types.ts`                          | Thêm `http_route_define` vào `InfraKind`       |
+| 2   | `nexus-hub/common-tools/src/parser/infra-detection.ts`         | Thêm JS/TS HTTP client rules + BE route rules  |
+| 3   | `nexus-hub/common-tools/src/pipeline/phase-2-graph.ts`         | Thêm `APIRoute` node + `EXPOSES` edge handling |
+| 4   | `nexus-hub/common-tools/src/pipeline/phase-8b-http-linkage.ts` | **Tạo mới**                                    |
+| 5   | `nexus-hub/common-tools/src/sync-tool.ts`                      | Register phase-8b                              |
+| 6   | `mcp-server/src/tools/sync-service.ts`                         | Register phase-8b                              |
+| 7   | `nexus-hub/common-tools/src/index.ts`                          | Export httpLinkagePhase                        |
+| 8   | `nexus-hub/common-tools/tests/infra-detection.test.ts`         | Thêm test cases P0                             |
 
 ### P1 (OpenAPI + gRPC — 3 tasks)
-| # | File | Action |
-|---|------|--------|
-| 9 | `nexus-hub/common-tools/src/parser/openapi-spec.ts` | **Tạo mới** |
-| 10 | `nexus-hub/common-tools/src/parser/infra-detection.ts` | Thêm gRPC rules |
-| 11 | `nexus-hub/common-tools/src/pipeline/phase-8c-grpc-linkage.ts` | **Tạo mới** |
+
+| #   | File                                                           | Action          |
+| --- | -------------------------------------------------------------- | --------------- |
+| 9   | `nexus-hub/common-tools/src/parser/openapi-spec.ts`            | **Tạo mới**     |
+| 10  | `nexus-hub/common-tools/src/parser/infra-detection.ts`         | Thêm gRPC rules |
+| 11  | `nexus-hub/common-tools/src/pipeline/phase-8c-grpc-linkage.ts` | **Tạo mới**     |
 
 ### P2 (Infra Topology + Extended Messaging — 4 tasks)
-| # | File | Action |
-|---|------|--------|
-| 12 | `nexus-hub/common-tools/src/parser/docker-compose.ts` | **Tạo mới** |
-| 13 | `nexus-hub/common-tools/src/parser/infra-detection.ts` | Thêm RabbitMQ/Redis/SQS rules |
-| 14 | `nexus-hub/common-tools/src/pipeline/phase-8a-kafka-linkage.ts` | Mở rộng sang async-linkage chung |
-| 15 | `nexus-hub/common-tools/src/pipeline/phase-5-imports.ts` | Cross-service package edges |
+
+| #   | File                                                            | Action                           |
+| --- | --------------------------------------------------------------- | -------------------------------- |
+| 12  | `nexus-hub/common-tools/src/parser/docker-compose.ts`           | **Tạo mới**                      |
+| 13  | `nexus-hub/common-tools/src/parser/infra-detection.ts`          | Thêm RabbitMQ/Redis/SQS rules    |
+| 14  | `nexus-hub/common-tools/src/pipeline/phase-8a-kafka-linkage.ts` | Mở rộng sang async-linkage chung |
+| 15  | `nexus-hub/common-tools/src/pipeline/phase-5-imports.ts`        | Cross-service package edges      |
 
 ---
 

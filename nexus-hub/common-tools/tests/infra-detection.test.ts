@@ -145,3 +145,175 @@ def send():
     expect(kafka!.target).toBe("$topic");
   });
 });
+
+// ─────────────────────────────────────────────────────────────
+// P0: JS/TS HTTP client detection
+// ─────────────────────────────────────────────────────────────
+
+describe("Infrastructure Detection — JS/TS HTTP clients", () => {
+  it("detects fetch() call", async () => {
+    const ts = `
+async function loadProducts() {
+  const res = await fetch("/api/products");
+  return res.json();
+}
+`;
+    const result = await parser.parseSource("api.ts", ts);
+    const http = result.infraPatterns.find((p) => p.kind === "http_request");
+    expect(http).toBeDefined();
+    expect(http!.target).toContain("products");
+  });
+
+  it("detects axios.get()", async () => {
+    const ts = `
+async function getUser(id: string) {
+  const res = await axios.get("/api/users/" + id);
+  return res.data;
+}
+`;
+    const result = await parser.parseSource("user.ts", ts);
+    const http = result.infraPatterns.find((p) => p.kind === "http_request");
+    expect(http).toBeDefined();
+  });
+
+  it("detects axios.post() and extracts method", async () => {
+    const ts = `
+async function createOrder(data: Order) {
+  return axios.post("/api/orders", data);
+}
+`;
+    const result = await parser.parseSource("order.ts", ts);
+    const http = result.infraPatterns.find((p) => p.kind === "http_request");
+    expect(http).toBeDefined();
+    expect(http!.metadata?.method).toBe("POST");
+  });
+
+  it("detects ky.get()", async () => {
+    const ts = `
+async function fetchConfig() {
+  return ky.get("/api/config").json();
+}
+`;
+    const result = await parser.parseSource("config.ts", ts);
+    const http = result.infraPatterns.find((p) => p.kind === "http_request");
+    expect(http).toBeDefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// P0: BE route definition detection
+// ─────────────────────────────────────────────────────────────
+
+describe("Infrastructure Detection — BE route definitions (Express/JS)", () => {
+  it("detects router.get()", async () => {
+    const ts = `
+router.get("/api/products", async (req, res) => {
+  const products = await ProductService.findAll();
+  res.json(products);
+});
+`;
+    const result = await parser.parseSource("products.route.ts", ts);
+    const route = result.infraPatterns.find(
+      (p) => p.kind === "http_route_define",
+    );
+    expect(route).toBeDefined();
+    expect(route!.target).toContain("products");
+    expect(route!.metadata?.method).toBe("GET");
+  });
+
+  it("detects app.post()", async () => {
+    const ts = `
+app.post("/api/orders", validateBody, async (req, res) => {
+  const order = await OrderService.create(req.body);
+  res.status(201).json(order);
+});
+`;
+    const result = await parser.parseSource("app.ts", ts);
+    const route = result.infraPatterns.find(
+      (p) => p.kind === "http_route_define",
+    );
+    expect(route).toBeDefined();
+    expect(route!.metadata?.method).toBe("POST");
+  });
+
+  it("detects router.delete()", async () => {
+    const ts = `
+router.delete("/api/products/:id", async (req, res) => {
+  await ProductService.remove(req.params.id);
+  res.sendStatus(204);
+});
+`;
+    const result = await parser.parseSource("products.route.ts", ts);
+    const route = result.infraPatterns.find(
+      (p) => p.kind === "http_route_define",
+    );
+    expect(route).toBeDefined();
+    expect(route!.metadata?.method).toBe("DELETE");
+  });
+});
+
+describe("Infrastructure Detection — BE route definitions (FastAPI/Python)", () => {
+  it("detects @app.get() decorator", async () => {
+    const py = `
+@app.get("/api/products")
+async def list_products():
+    return db.query(Product).all()
+`;
+    const result = await parser.parseSource("routes.py", py);
+    const route = result.infraPatterns.find(
+      (p) => p.kind === "http_route_define",
+    );
+    expect(route).toBeDefined();
+    expect(route!.target).toContain("products");
+    expect(route!.metadata?.method).toBe("GET");
+  });
+
+  it("detects @router.post() decorator", async () => {
+    const py = `
+@router.post("/api/orders")
+async def create_order(data: OrderCreate):
+    return await order_service.create(data)
+`;
+    const result = await parser.parseSource("orders.py", py);
+    const route = result.infraPatterns.find(
+      (p) => p.kind === "http_route_define",
+    );
+    expect(route).toBeDefined();
+    expect(route!.metadata?.method).toBe("POST");
+  });
+});
+
+describe("Infrastructure Detection — http_route_define method extraction", () => {
+  it("extracts GET method from router.get", async () => {
+    const ts = `
+router.get("/health", (req, res) => res.json({ ok: true }));
+`;
+    const result = await parser.parseSource("health.ts", ts);
+    const route = result.infraPatterns.find(
+      (p) => p.kind === "http_route_define",
+    );
+    expect(route?.metadata?.method).toBe("GET");
+  });
+
+  it("extracts PUT method from router.put", async () => {
+    const ts = `
+router.put("/api/users/:id", updateUser);
+`;
+    const result = await parser.parseSource("users.ts", ts);
+    const route = result.infraPatterns.find(
+      (p) => p.kind === "http_route_define",
+    );
+    expect(route?.metadata?.method).toBe("PUT");
+  });
+
+  it("extracts PATCH method from router.patch", async () => {
+    const ts = `
+router.patch("/api/users/:id/status", patchStatus);
+`;
+    const result = await parser.parseSource("users.ts", ts);
+    const route = result.infraPatterns.find(
+      (p) => p.kind === "http_route_define",
+    );
+    expect(route?.metadata?.method).toBe("PATCH");
+  });
+});
