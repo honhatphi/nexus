@@ -156,6 +156,17 @@ const INFRA_LABELS: Record<string, string> = {
   db_mongo: "Database",
   db_elasticsearch: "Database",
   http_request: "HTTPEndpoint",
+  http_route_define: "APIRoute",
+  grpc_call: "GRPCEndpoint",
+  grpc_serve: "GRPCEndpoint",
+  rabbitmq_publish: "MessageQueue",
+  rabbitmq_consume: "MessageQueue",
+  redis_publish: "MessageChannel",
+  redis_subscribe: "MessageChannel",
+  sqs_send: "MessageQueue",
+  sqs_receive: "MessageQueue",
+  nats_publish: "MessageChannel",
+  nats_subscribe: "MessageChannel",
 };
 
 const INFRA_EDGE: Record<string, string> = {
@@ -165,6 +176,29 @@ const INFRA_EDGE: Record<string, string> = {
   db_mongo: "CONNECTS_TO",
   db_elasticsearch: "CONNECTS_TO",
   http_request: "HTTP_CALL",
+  http_route_define: "EXPOSES",
+  grpc_call: "GRPC_CALL",
+  grpc_serve: "GRPC_HANDLES",
+  rabbitmq_publish: "PUBLISHES_TO",
+  rabbitmq_consume: "CONSUMES_FROM",
+  redis_publish: "PUBLISHES_TO",
+  redis_subscribe: "SUBSCRIBES_TO",
+  sqs_send: "SENDS_TO",
+  sqs_receive: "RECEIVES_FROM",
+  nats_publish: "PUBLISHES_TO",
+  nats_subscribe: "SUBSCRIBES_TO",
+};
+
+// Queue/channel type labels for MessageQueue nodes
+const QUEUE_TYPE: Record<string, string> = {
+  rabbitmq_publish: "rabbitmq",
+  rabbitmq_consume: "rabbitmq",
+  redis_publish: "redis",
+  redis_subscribe: "redis",
+  sqs_send: "sqs",
+  sqs_receive: "sqs",
+  nats_publish: "nats",
+  nats_subscribe: "nats",
 };
 
 const DB_TYPE: Record<string, string> = {
@@ -248,31 +282,102 @@ async function upsertInfraToGraph(
     );
 
     const dbType = DB_TYPE[ip.kind] ?? "";
-    await graph.write(
-      `MERGE (t:${label} {name: $target})
-       SET t.type = $dbType, t.updatedAt = timestamp()`,
-      { target: ip.target, dbType },
-    );
+
+    // APIRoute nodes carry path + method + service as identity/properties
+    if (ip.kind === "http_route_define") {
+      const method = ip.metadata?.method ?? "GET";
+      await graph.write(
+        `MERGE (t:APIRoute {path: $path, method: $method, service: $service})
+         SET t.name = $path,
+             t.operationId = $operationId,
+             t.source = $source,
+             t.updatedAt = timestamp()`,
+        {
+          path: ip.target,
+          method,
+          service: serviceName,
+          operationId: ip.metadata?.operationId ?? "",
+          source: ip.metadata?.source ?? "code",
+        },
+      );
+    } else if (ip.kind === "grpc_call" || ip.kind === "grpc_serve") {
+      // GRPCEndpoint: identity by name + service (the gRPC service name, not microservice)
+      const grpcService = ip.metadata?.service ?? ip.target;
+      await graph.write(
+        `MERGE (t:GRPCEndpoint {name: $name, service: $grpcService})
+         SET t.updatedAt = timestamp()`,
+        { name: ip.target, grpcService },
+      );
+    } else if (QUEUE_TYPE[ip.kind]) {
+      // MessageQueue / MessageChannel — include broker type
+      const queueType = QUEUE_TYPE[ip.kind];
+      await graph.write(
+        `MERGE (t:${label} {name: $target, type: $queueType})
+         SET t.updatedAt = timestamp()`,
+        { target: ip.target, queueType },
+      );
+    } else {
+      await graph.write(
+        `MERGE (t:${label} {name: $target})
+         SET t.type = $dbType, t.updatedAt = timestamp()`,
+        { target: ip.target, dbType },
+      );
+    }
     infraNodes++;
 
     if (ownerFn) {
-      const metaStr = ip.metadata ? JSON.stringify(ip.metadata) : "";
-      await graph.write(
-        `MATCH (f:Function {name: $fnName, file: $file, service: $service})
-         MATCH (t:${label} {name: $target})
-         MERGE (f)-[r:${edge}]->(t)
-         SET r.line = $line, r.detail = $detail, r.metadata = $metadata,
-             r.updatedAt = timestamp()`,
-        {
-          fnName: ownerFn.name,
-          file: parseResult.file,
-          service: serviceName,
-          target: ip.target,
-          line: ip.line,
-          detail: ip.detail,
-          metadata: metaStr,
-        },
-      );
+      if (ip.kind === "http_route_define") {
+        const method = ip.metadata?.method ?? "GET";
+        await graph.write(
+          `MATCH (f:Function {name: $fnName, file: $file, service: $service})
+           MATCH (t:APIRoute {path: $path, method: $method, service: $service})
+           MERGE (f)-[r:EXPOSES]->(t)
+           SET r.line = $line, r.updatedAt = timestamp()`,
+          {
+            fnName: ownerFn.name,
+            file: parseResult.file,
+            service: serviceName,
+            path: ip.target,
+            method,
+            line: ip.line,
+          },
+        );
+      } else if (ip.kind === "grpc_call" || ip.kind === "grpc_serve") {
+        const grpcService = ip.metadata?.service ?? ip.target;
+        const grpcEdge = ip.kind === "grpc_call" ? "GRPC_CALL" : "GRPC_HANDLES";
+        await graph.write(
+          `MATCH (f:Function {name: $fnName, file: $file, service: $service})
+           MATCH (t:GRPCEndpoint {name: $name, service: $grpcService})
+           MERGE (f)-[r:${grpcEdge}]->(t)
+           SET r.line = $line, r.updatedAt = timestamp()`,
+          {
+            fnName: ownerFn.name,
+            file: parseResult.file,
+            service: serviceName,
+            name: ip.target,
+            grpcService,
+            line: ip.line,
+          },
+        );
+      } else {
+        const metaStr = ip.metadata ? JSON.stringify(ip.metadata) : "";
+        await graph.write(
+          `MATCH (f:Function {name: $fnName, file: $file, service: $service})
+           MATCH (t:${label} {name: $target})
+           MERGE (f)-[r:${edge}]->(t)
+           SET r.line = $line, r.detail = $detail, r.metadata = $metadata,
+               r.updatedAt = timestamp()`,
+          {
+            fnName: ownerFn.name,
+            file: parseResult.file,
+            service: serviceName,
+            target: ip.target,
+            line: ip.line,
+            detail: ip.detail,
+            metadata: metaStr,
+          },
+        );
+      }
       infraRels++;
     } else {
       await graph.write(

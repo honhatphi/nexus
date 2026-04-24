@@ -59,6 +59,17 @@ export type InfraKind =
   | "db_mongo"
   | "db_elasticsearch"
   | "http_request"
+  | "http_route_define"
+  | "grpc_call"
+  | "grpc_serve"
+  | "rabbitmq_publish"
+  | "rabbitmq_consume"
+  | "redis_publish"
+  | "redis_subscribe"
+  | "sqs_send"
+  | "sqs_receive"
+  | "nats_publish"
+  | "nats_subscribe"
   | "class_inherit";
 
 /**

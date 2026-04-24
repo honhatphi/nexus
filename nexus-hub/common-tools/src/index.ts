@@ -29,9 +29,19 @@ export { importResolutionPhase } from "./pipeline/phase-5-imports.js";
 export { heritagePhase } from "./pipeline/phase-6-heritage.js";
 export { communityPhase } from "./pipeline/phase-7-community.js";
 export { kafkaLinkagePhase } from "./pipeline/phase-8a-kafka-linkage.js";
+export { httpLinkagePhase } from "./pipeline/phase-8b-http-linkage.js";
+export { grpcLinkagePhase } from "./pipeline/phase-8c-grpc-linkage.js";
+export { messagingLinkagePhase } from "./pipeline/phase-8d-messaging-linkage.js";
 export { processTracingPhase } from "./pipeline/phase-8-process.js";
 export { typeResolutionPhase } from "./pipeline/phase-9-types.js";
 export { createEmptyContext } from "./pipeline/types.js";
+
+// Parser exports
+export { isOpenApiFile, parseOpenApiSpec } from "./parser/openapi-spec.js";
+export {
+  isDockerComposeFile,
+  parseDockerCompose,
+} from "./parser/docker-compose.js";
 export type {
   PipelineContext,
   PipelineDeps,
