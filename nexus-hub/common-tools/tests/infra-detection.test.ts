@@ -375,9 +375,7 @@ def send_notification(message):
     channel.basic_publish(exchange='', routing_key='notifications', body=message)
 `;
     const result = await parser.parseSource("rabbit_producer.py", py);
-    const rmq = result.infraPatterns.find(
-      (p) => p.kind === "rabbitmq_publish",
-    );
+    const rmq = result.infraPatterns.find((p) => p.kind === "rabbitmq_publish");
     expect(rmq).toBeDefined();
   });
 
@@ -388,9 +386,7 @@ def start_consumer():
     channel.start_consuming()
 `;
     const result = await parser.parseSource("rabbit_consumer.py", py);
-    const rmq = result.infraPatterns.find(
-      (p) => p.kind === "rabbitmq_consume",
-    );
+    const rmq = result.infraPatterns.find((p) => p.kind === "rabbitmq_consume");
     expect(rmq).toBeDefined();
   });
 
@@ -401,9 +397,7 @@ async function publishOrder(order: Order) {
 }
 `;
     const result = await parser.parseSource("publisher.ts", ts);
-    const rmq = result.infraPatterns.find(
-      (p) => p.kind === "rabbitmq_publish",
-    );
+    const rmq = result.infraPatterns.find((p) => p.kind === "rabbitmq_publish");
     expect(rmq).toBeDefined();
   });
 });
@@ -446,9 +440,7 @@ async function subscribeToEvents() {
 }
 `;
     const result = await parser.parseSource("nats_sub.ts", ts);
-    const nats = result.infraPatterns.find(
-      (p) => p.kind === "nats_subscribe",
-    );
+    const nats = result.infraPatterns.find((p) => p.kind === "nats_subscribe");
     expect(nats).toBeDefined();
   });
 });

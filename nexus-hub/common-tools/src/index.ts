@@ -38,7 +38,10 @@ export { createEmptyContext } from "./pipeline/types.js";
 
 // Parser exports
 export { isOpenApiFile, parseOpenApiSpec } from "./parser/openapi-spec.js";
-export { isDockerComposeFile, parseDockerCompose } from "./parser/docker-compose.js";
+export {
+  isDockerComposeFile,
+  parseDockerCompose,
+} from "./parser/docker-compose.js";
 export type {
   PipelineContext,
   PipelineDeps,

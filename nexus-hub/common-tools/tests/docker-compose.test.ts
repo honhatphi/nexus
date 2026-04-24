@@ -21,9 +21,9 @@ describe("isDockerComposeFile", () => {
     expect(isDockerComposeFile("/project/docker-compose.prod.yml")).toBe(true);
   });
   it("recognizes docker-compose.override.yaml", () => {
-    expect(
-      isDockerComposeFile("/project/docker-compose.override.yaml"),
-    ).toBe(true);
+    expect(isDockerComposeFile("/project/docker-compose.override.yaml")).toBe(
+      true,
+    );
   });
   it("ignores regular yaml files", () => {
     expect(isDockerComposeFile("/project/config.yaml")).toBe(false);

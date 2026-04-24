@@ -326,7 +326,6 @@ async function upsertInfraToGraph(
     infraNodes++;
 
     if (ownerFn) {
-      const metaStr = ip.metadata ? JSON.stringify(ip.metadata) : "";
       if (ip.kind === "http_route_define") {
         const method = ip.metadata?.method ?? "GET";
         await graph.write(
@@ -361,6 +360,7 @@ async function upsertInfraToGraph(
           },
         );
       } else {
+        const metaStr = ip.metadata ? JSON.stringify(ip.metadata) : "";
         await graph.write(
           `MATCH (f:Function {name: $fnName, file: $file, service: $service})
            MATCH (t:${label} {name: $target})

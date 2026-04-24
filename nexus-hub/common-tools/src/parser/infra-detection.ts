@@ -289,21 +289,13 @@ const INFRA_RULES: InfraRule[] = [
     fallbackTarget: "<queue>",
     detailTemplate: "RabbitMQ consume from: {target}",
   },
-  // JS/TS: channel.sendToQueue(queue, content) / amqplib
+  // JS/TS: channel.sendToQueue(queue, content) — amqplib
   {
-    pattern: /\.sendToQueue$|amqplib\.connect$/,
+    pattern: /\.sendToQueue$/,
     kind: "rabbitmq_publish",
     targetArg: 0,
     fallbackTarget: "<queue>",
     detailTemplate: "RabbitMQ publish to: {target}",
-  },
-  // JS/TS: channel.consume(queue, handler) / amqplib
-  {
-    pattern: /\.assertQueue$|channel\.ack$|amqp\.createChannel$/,
-    kind: "rabbitmq_consume",
-    targetArg: 0,
-    fallbackTarget: "<queue>",
-    detailTemplate: "RabbitMQ consume from: {target}",
   },
   // ── Redis Pub/Sub ──────────────────────────────────────────
   // Python: redis_client.publish(channel, message)

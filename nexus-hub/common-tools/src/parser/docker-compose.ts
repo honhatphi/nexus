@@ -8,9 +8,9 @@
 //   Edges  DEPENDS_ON   InfraService → InfraService
 //          IN_NETWORK   InfraService → InfraService (shared network)
 //
-// The parse result is consumed by phase-2-graph to upsert nodes,
-// and by phase-8d-messaging-linkage (optional future phase) for
-// topology-aware cross-service resolution.
+// The parse result is consumed by phase-2-graph to upsert nodes.
+// Topology metadata (dependsOn, networks) is available for future
+// topology-aware phases.
 // ─────────────────────────────────────────────────────────────
 
 import path from "node:path";
@@ -19,8 +19,7 @@ import type { ParseResult } from "../types.js";
 
 // ── File detection ────────────────────────────────────────────
 
-const COMPOSE_BASENAME_RE =
-  /^docker-compose(\.[a-z0-9_-]+)?\.(ya?ml)$/i;
+const COMPOSE_BASENAME_RE = /^docker-compose(\.[a-z0-9_-]+)?\.(ya?ml)$/i;
 
 export function isDockerComposeFile(filePath: string): boolean {
   return COMPOSE_BASENAME_RE.test(path.basename(filePath));
@@ -31,7 +30,10 @@ export function isDockerComposeFile(filePath: string): boolean {
 interface ComposeService {
   image?: string;
   build?: string | { context?: string; dockerfile?: string };
-  ports?: (string | { published?: string | number; target?: string | number })[];
+  ports?: (
+    | string
+    | { published?: string | number; target?: string | number }
+  )[];
   depends_on?: string[] | Record<string, unknown>;
   networks?: string[] | Record<string, unknown>;
   environment?: string[] | Record<string, string>;
@@ -48,29 +50,27 @@ interface ComposeDoc {
 
 function extractPorts(ports: ComposeService["ports"]): string[] {
   if (!ports) return [];
-  return ports.flatMap((p) => {
-    if (typeof p === "string") {
-      // "8080:80" → take host port
-      return [p.split(":")[0]];
-    }
-    if (typeof p === "object" && p !== null) {
-      return [String(p.published ?? p.target ?? "")];
-    }
-    return [];
-  }).filter(Boolean);
+  return ports
+    .flatMap((p) => {
+      if (typeof p === "string") {
+        // "8080:80" → take host port
+        return [p.split(":")[0]];
+      }
+      if (typeof p === "object" && p !== null) {
+        return [String(p.published ?? p.target ?? "")];
+      }
+      return [];
+    })
+    .filter(Boolean);
 }
 
-function extractDependsOn(
-  dependsOn: ComposeService["depends_on"],
-): string[] {
+function extractDependsOn(dependsOn: ComposeService["depends_on"]): string[] {
   if (!dependsOn) return [];
   if (Array.isArray(dependsOn)) return dependsOn;
   return Object.keys(dependsOn);
 }
 
-function extractNetworks(
-  networks: ComposeService["networks"],
-): string[] {
+function extractNetworks(networks: ComposeService["networks"]): string[] {
   if (!networks) return [];
   if (Array.isArray(networks)) return networks;
   return Object.keys(networks);
@@ -85,16 +85,10 @@ function extractImage(svc: ComposeService): string {
 // ── Main parser ───────────────────────────────────────────────
 
 /**
- * Parse a Docker Compose file and emit a ParseResult with:
- * - one "symbol" per service (kind = "function" is abused as placeholder;
- *   actual topology is stored in infraPatterns with kind = "docker_service")
+ * Parse a Docker Compose file and emit a ParseResult with one
+ * InfraPattern per service.
  *
- * NOTE: Docker Compose topology is stored differently from code symbols —
- * it's surfaced via `parseResult.dags` (reusing the DAG structure as a
- * container for topology metadata) so that phase-2-graph can pick it up
- * without needing a new pipeline phase.
- *
- * The canonical data lives in `parseResult.infraPatterns`:
+ * The data lives in `parseResult.infraPatterns`:
  *   kind = "docker_service"  (new, handled by phase-2-graph P2 update)
  *   target = service name
  *   metadata = { image, ports, dependsOn, networks }
