@@ -1,12 +1,20 @@
-# Nexus MCP config — Codex CLI example
-# Copy to ~/.codex/config.toml and update workspace_id.
+# Nexus MCP config — Codex CLI
+# Copy to ~/.codex/config.toml and update as needed.
+#
+# Codex CLI config reference:
+#   https://github.com/openai/codex#configuration
+#
+# MCP server section uses the standard MCP HTTP transport format.
 
-[mcp]
-server_url    = "http://localhost:13100/mcp"
-workspace_id  = "my-project"   # used to scope ledger/artifact/context-pack storage
+model = "o4-mini"          # or "gpt-4.1", "o3", etc.
+approval_policy = "auto"   # "auto" | "on-failure" | "never"
 
-# Optional: increase context pack token budget (default: 12000)
-# max_context_tokens = 16000
+# ── MCP Servers ──────────────────────────────────────────────
+# Nexus Knowledge-Base MCP server (HTTP/SSE transport)
+[mcp_servers.nexus-kb]
+url  = "http://localhost:13100/mcp"
+type = "http"   # Codex CLI ≥ 0.9 supports HTTP transport natively
 
-[logging]
-level = "info"
+# Optional: pass workspace ID as a header (uncomment if supported by your Codex version)
+# [mcp_servers.nexus-kb.headers]
+# x-nexus-workspace-id = "my-project"

@@ -15,10 +15,9 @@ export function registerProcessFlowsTool(
   server: McpServer,
   memgraph: MemgraphClient,
 ): void {
-  server.tool(
-    "get_process_flows",
-    "Discover execution flows through a function — traces the call chain from entry points to terminal functions. Use to understand how a function fits into larger workflows.",
-    {
+  server.registerTool("get_process_flows", {
+    description: "Discover execution flows through a function — traces the call chain from entry points to terminal functions. Use to understand how a function fits into larger workflows.",
+    inputSchema: {
       function_name: z.string().describe("Function name to trace flows for."),
       service: z
         .string()
@@ -34,7 +33,7 @@ export function registerProcessFlowsTool(
           "Maximum traversal depth in the call graph (1–15, default 10).",
         ),
     },
-    async ({ function_name, service, max_depth }) => {
+  }, async ({ function_name, service, max_depth }) => {
       try {
         const forwardServiceFilter = service
           ? "AND start.service = $service AND end.service = $service"
@@ -148,8 +147,7 @@ export function registerProcessFlowsTool(
           isError: true,
         };
       }
-    },
-  );
+    });
 }
 
 // ── MCP Resources ────────────────────────────────────────────
@@ -159,7 +157,7 @@ export function registerResources(
   memgraph: MemgraphClient,
 ): void {
   // 1. nexus://services — List all indexed services with sync status
-  server.resource(
+  server.registerResource(
     "nexus-services",
     "nexus://services",
     {
@@ -194,7 +192,7 @@ export function registerResources(
   );
 
   // 2. nexus://overview/{service} — Service overview with stats
-  server.resource(
+  server.registerResource(
     "nexus-service-overview",
     "nexus://overview/{service}",
     {
@@ -241,7 +239,7 @@ export function registerResources(
   );
 
   // 3. nexus://clusters/{service} — Community clusters
-  server.resource(
+  server.registerResource(
     "nexus-service-clusters",
     "nexus://clusters/{service}",
     { description: "Auto-detected community clusters for a service" },
@@ -269,7 +267,7 @@ export function registerResources(
   );
 
   // 4. nexus://flows/{service} — Execution flows / process traces
-  server.resource(
+  server.registerResource(
     "nexus-service-flows",
     "nexus://flows/{service}",
     { description: "Execution flows (process traces) for a service" },

@@ -15,20 +15,20 @@ export function registerWorkspaceTools(
   indexer: CodeIndexer,
 ): void {
   // ── nexus_workspace_status ─────────────────────────────────
-  server.tool(
-    "nexus_workspace_status",
-    "Show the current workspace manifest and registered repos. Does NOT modify the manifest.",
-    {
+  server.registerTool("nexus_workspace_status", {
+    description: "Show the current workspace manifest and registered repos. Does NOT modify the manifest.",
+    inputSchema: {
       cwd: z
         .string()
         .optional()
         .describe(
-          "Directory to search from (default: process.cwd()). Walk upward until .nexus/workspace.yaml is found.",
+          "Directory to search from. Walks upward until .nexus/workspace.yaml is found. Defaults to NEXUS_WORKSPACE_ROOT env var, then process.cwd().",
         ),
     },
-    async ({ cwd }) => {
+  }, async ({ cwd }) => {
       try {
-        const startDir = cwd ?? process.cwd();
+        const startDir =
+          cwd ?? process.env.NEXUS_WORKSPACE_ROOT ?? process.cwd();
         const found = await WorkspaceResolver.findWorkspaceRoot(startDir);
 
         if (!found) {
@@ -39,6 +39,7 @@ export function registerWorkspaceTools(
                 text: JSON.stringify({
                   error:
                     "No .nexus/workspace.yaml found. Run nexus_resolve_workspace to initialise.",
+                  hint: `Searched from: ${startDir}. Set NEXUS_WORKSPACE_ROOT to the workspace root.`,
                 }),
               },
             ],
@@ -108,18 +109,18 @@ export function registerWorkspaceTools(
           isError: true,
         };
       }
-    },
-  );
+    });
 
   // ── nexus_resolve_workspace ────────────────────────────────
-  server.tool(
-    "nexus_resolve_workspace",
-    "Find or create the workspace manifest. Pass workspaceId to initialise a new workspace at cwd. Returns resolved workspaceId and root.",
-    {
+  server.registerTool("nexus_resolve_workspace", {
+    description: "Find or create the workspace manifest. Pass workspaceId to initialise a new workspace at cwd. Returns resolved workspaceId and root.",
+    inputSchema: {
       cwd: z
         .string()
         .optional()
-        .describe("Directory to search/init from (default: process.cwd())."),
+        .describe(
+          "Directory to search/init from. Defaults to NEXUS_WORKSPACE_ROOT env var, then process.cwd().",
+        ),
       workspace_id: z
         .string()
         .optional()
@@ -127,9 +128,10 @@ export function registerWorkspaceTools(
           "If provided and no manifest exists, creates one with this workspaceId.",
         ),
     },
-    async ({ cwd, workspace_id }) => {
+  }, async ({ cwd, workspace_id }) => {
       try {
-        const startDir = cwd ?? process.cwd();
+        const startDir =
+          cwd ?? process.env.NEXUS_WORKSPACE_ROOT ?? process.cwd();
         let found = await WorkspaceResolver.findWorkspaceRoot(startDir);
 
         if (!found && workspace_id) {
@@ -184,19 +186,17 @@ export function registerWorkspaceTools(
           isError: true,
         };
       }
-    },
-  );
+    });
 
   // ── nexus_sync_current_repo ────────────────────────────────
-  server.tool(
-    "nexus_sync_current_repo",
-    "Detect the current repo (via Git), optionally add it to the workspace manifest, then sync/index it into the Knowledge Base. This is the primary way to keep the KB up to date.",
-    {
+  server.registerTool("nexus_sync_current_repo", {
+    description: "Detect the current repo (via Git), optionally add it to the workspace manifest, then sync/index it into the Knowledge Base. This is the primary way to keep the KB up to date.",
+    inputSchema: {
       cwd: z
         .string()
         .optional()
         .describe(
-          "Path to the repo root or any subdirectory (default: process.cwd()).",
+          "Path to the repo root or any subdirectory. Defaults to NEXUS_WORKSPACE_ROOT env var, then process.cwd().",
         ),
       auto_add_to_workspace: z
         .boolean()
@@ -211,9 +211,10 @@ export function registerWorkspaceTools(
           "If true, re-index all files even if content hash is unchanged.",
         ),
     },
-    async ({ cwd, auto_add_to_workspace = true, force_update = false }) => {
+  }, async ({ cwd, auto_add_to_workspace = true, force_update = false }) => {
       try {
-        const startDir = cwd ?? process.cwd();
+        const startDir =
+          cwd ?? process.env.NEXUS_WORKSPACE_ROOT ?? process.cwd();
         const detected = await RepoDetector.detect(startDir);
 
         if (!detected) {
@@ -313,6 +314,5 @@ export function registerWorkspaceTools(
           isError: true,
         };
       }
-    },
-  );
+    });
 }

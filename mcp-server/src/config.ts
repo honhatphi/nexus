@@ -25,6 +25,11 @@ export interface Config {
   };
   /** When true, registers legacy low-level tools (query_graph, search_knowledge_base, etc.) */
   enableLegacyTools: boolean;
+  /**
+   * Default workspace root directory used when no cwd is provided to workspace tools.
+   * Maps to NEXUS_WORKSPACE_ROOT env var.
+   */
+  workspaceRoot: string;
 }
 
 export function loadConfig(): Config {
@@ -55,5 +60,6 @@ export function loadConfig(): Config {
         parseInt(process.env.NEXUS_TASK_MAX_INPUT_TOKENS ?? "", 10) || 16_000,
     },
     enableLegacyTools: process.env.NEXUS_ENABLE_LEGACY_TOOLS === "1",
+    workspaceRoot: process.env.NEXUS_WORKSPACE_ROOT ?? "",
   };
 }

@@ -13,10 +13,9 @@ import type { ParseResult } from "@nexus-hub/common-tools";
  * Accepts a file path OR raw source code & parses it with tree-sitter.
  */
 export function registerParserTool(server: McpServer): void {
-  server.tool(
-    "parse_code",
-    `Parse a source file (.go, .py, .php, .ts/.tsx) using tree-sitter and extract functions, parameters, return types, and function calls into a unified JSON schema. Supported extensions: ${Object.keys(EXTENSION_MAP).join(", ")}`,
-    {
+  server.registerTool("parse_code", {
+    description: `Parse a source file (.go, .py, .php, .ts/.tsx) using tree-sitter and extract functions, parameters, return types, and function calls into a unified JSON schema. Supported extensions: ${Object.keys(EXTENSION_MAP).join(", ")}`,
+    inputSchema: {
       filePath: z
         .string()
         .optional()
@@ -36,7 +35,7 @@ export function registerParserTool(server: McpServer): void {
           "Explicit language override. Auto-detected from filePath extension if omitted.",
         ),
     },
-    async ({ filePath, source, language }) => {
+  }, async ({ filePath, source, language }) => {
       try {
         // Resolve source code
         let code = source;
@@ -106,6 +105,5 @@ export function registerParserTool(server: McpServer): void {
           isError: true,
         };
       }
-    },
-  );
+    });
 }

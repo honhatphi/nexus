@@ -106,10 +106,9 @@ export function registerDetectChangesTool(
   server: McpServer,
   memgraph: MemgraphClient,
 ): void {
-  server.tool(
-    "detect_changes",
-    "Analyze recent code changes (git diff) against the Knowledge Base. Returns affected KB symbols, their callers, and a risk assessment for each changed file.",
-    {
+  server.registerTool("detect_changes", {
+    description: "Analyze recent code changes (git diff) against the Knowledge Base. Returns affected KB symbols, their callers, and a risk assessment for each changed file.",
+    inputSchema: {
       service_path: z
         .string()
         .describe(
@@ -122,7 +121,7 @@ export function registerDetectChangesTool(
           "Git ref to diff against (default: HEAD~1). Can be a commit hash, branch, or tag.",
         ),
     },
-    async ({ service_path, ref }) => {
+  }, async ({ service_path, ref }) => {
       try {
         const serviceName = service_path.split("/").pop() ?? "unknown";
 
@@ -311,6 +310,5 @@ export function registerDetectChangesTool(
           isError: true,
         };
       }
-    },
-  );
+    });
 }

@@ -13,10 +13,9 @@ export function registerContextPackTool(
   builder: ContextPackBuilder,
   defaultBudget: Config["budget"],
 ): void {
-  server.tool(
-    "nexus_build_context_pack",
-    "Build a budget-trimmed context pack for a task. Runs hybrid search against the KB, selects the most relevant files/symbols, pulls the active task ledger (if taskId provided), and returns a structured pack with a manifest and instructions. Use this as the FIRST tool call for any coding or debugging task.",
-    {
+  server.registerTool("nexus_build_context_pack", {
+    description: "Build a budget-trimmed context pack for a task. Runs hybrid search against the KB, selects the most relevant files/symbols, pulls the active task ledger (if taskId provided), and returns a structured pack with a manifest and instructions. Use this as the FIRST tool call for any coding or debugging task.",
+    inputSchema: {
       workspace_id: z
         .string()
         .describe("Workspace or service ID being worked on."),
@@ -44,7 +43,7 @@ export function registerContextPackTool(
         .optional()
         .describe("Maximum number of files/symbols to include (default: 8)."),
     },
-    async ({
+  }, async ({
       workspace_id,
       task,
       mode,
@@ -67,10 +66,20 @@ export function registerContextPackTool(
           preferences: max_files ? { maxFiles: max_files } : undefined,
         });
 
+        // Return compact summary: instructions + manifest + sections.
+        // Avoid returning the full raw JSON blob which can exceed token budget.
+        const CHARS_PER_TOKEN = 4;
+        const outputBudgetChars =
+          defaultBudget.reservedOutputTokens * CHARS_PER_TOKEN;
+        const out = JSON.stringify(pack, null, 2);
+        const text =
+          out.length > outputBudgetChars
+            ? out.slice(0, outputBudgetChars) +
+              `\n... [truncated — ${Math.ceil(out.length / CHARS_PER_TOKEN)} estimated tokens total. Use nexus_get_code_snippet for file content.]`
+            : out;
+
         return {
-          content: [
-            { type: "text" as const, text: JSON.stringify(pack, null, 2) },
-          ],
+          content: [{ type: "text" as const, text }],
         };
       } catch (err) {
         return {
@@ -83,6 +92,5 @@ export function registerContextPackTool(
           isError: true,
         };
       }
-    },
-  );
+    });
 }

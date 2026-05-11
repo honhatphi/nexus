@@ -30,10 +30,9 @@ export function registerAugmentTool(
   server: McpServer,
   memgraph: MemgraphClient,
 ): void {
-  server.tool(
-    "augment",
-    "Enrich a search pattern with graph context. Given a function/class name or keyword, returns matching symbols with their callers, callees, process flows, and community — in a compact format optimized for agent context enrichment. Designed to be fast (~500ms). Use as a lightweight alternative to get_symbol_context when you need quick info for multiple matches.",
-    {
+  server.registerTool("augment", {
+    description: "Enrich a search pattern with graph context. Given a function/class name or keyword, returns matching symbols with their callers, callees, process flows, and community — in a compact format optimized for agent context enrichment. Designed to be fast (~500ms). Use as a lightweight alternative to get_symbol_context when you need quick info for multiple matches.",
+    inputSchema: {
       pattern: z
         .string()
         .min(2)
@@ -80,7 +79,7 @@ export function registerAugmentTool(
         .optional()
         .describe("Rejection reason for rejectCandidate action."),
     },
-    async ({
+  }, async ({
       pattern,
       service,
       limit,
@@ -335,6 +334,5 @@ export function registerAugmentTool(
           isError: true,
         };
       }
-    },
-  );
+    });
 }

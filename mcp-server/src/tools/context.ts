@@ -11,10 +11,9 @@ import type { INexusCore } from "@nexus-hub/core";
 import { checkAllStaleness } from "./index.js";
 
 export function registerContextTool(server: McpServer, core: INexusCore): void {
-  server.tool(
-    "get_symbol_context",
-    "Get a 360-degree view of a symbol (function, class, or method) in a single call. Returns: callers (who calls it), callees (what it calls), community membership, process/execution flows, class heritage (extends/implements), and infrastructure patterns. Use this instead of multiple separate queries.",
-    {
+  server.registerTool("get_symbol_context", {
+    description: "Get a 360-degree view of a symbol (function, class, or method) in a single call. Returns: callers (who calls it), callees (what it calls), community membership, process/execution flows, class heritage (extends/implements), and infrastructure patterns. Use this instead of multiple separate queries.",
+    inputSchema: {
       name: z
         .string()
         .describe("Symbol name to look up (function, class, or method)."),
@@ -23,7 +22,7 @@ export function registerContextTool(server: McpServer, core: INexusCore): void {
         .optional()
         .describe("Optional service name to scope the lookup."),
     },
-    async ({ name, service }) => {
+  }, async ({ name, service }) => {
       try {
         const graph = core.graph;
         const svcFilter = service ? "AND n.service = $service" : "";
@@ -249,11 +248,20 @@ export function registerContextTool(server: McpServer, core: INexusCore): void {
           result.stalenessWarnings = staleness;
         }
 
+        // Cap output to ~8000 tokens to prevent context overflow
+        const MAX_OUTPUT_CHARS = 8000 * 4;
+        const raw = JSON.stringify(result, null, 2);
+        const text =
+          raw.length > MAX_OUTPUT_CHARS
+            ? raw.slice(0, MAX_OUTPUT_CHARS) +
+              "\n... [truncated — use nexus_get_code_snippet for file content]"
+            : raw;
+
         return {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(result, null, 2),
+              text,
             },
           ],
         };
@@ -268,6 +276,5 @@ export function registerContextTool(server: McpServer, core: INexusCore): void {
           isError: true,
         };
       }
-    },
-  );
+    });
 }
