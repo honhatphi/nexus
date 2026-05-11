@@ -31,7 +31,18 @@ function containsAbsPath(obj: unknown): boolean {
   return (
     json.includes("/Users/") ||
     json.includes("/home/") ||
+    json.includes("C:\\\\") ||
     json.includes(ABS_PATH)
+  );
+}
+
+/** Regression guard: raw TaskWorkspaceInfo keys must never appear in response JSON. */
+function leaksRawInfoKeys(obj: unknown): boolean {
+  const json = JSON.stringify(obj);
+  return (
+    json.includes('"workspaceDir"') ||
+    json.includes('"agentsMdPath"') ||
+    json.includes('"contextPackMdPath"')
   );
 }
 
@@ -60,13 +71,24 @@ describe("taskWorkspaceView", () => {
     expect(result).toHaveProperty("hint");
   });
 
+  it("debug=false: does not leak raw TaskWorkspaceInfo keys in JSON", () => {
+    const result = taskWorkspaceView(mockInfo, false);
+    expect(leaksRawInfoKeys(result)).toBe(false);
+  });
+
   it("debug=true: includes local debug fields", () => {
     const result = taskWorkspaceView(mockInfo, true);
     expect(result).toHaveProperty("localWorkspaceDir");
     expect(result).toHaveProperty("repoRoot", ABS_PATH);
     expect(result).toHaveProperty("agentsMd");
     expect(result).toHaveProperty("contextPackMd");
+    expect(result).toHaveProperty("cdHint");
     expect(containsAbsPath(result)).toBe(true);
+  });
+
+  it("debug=true: does not leak raw TaskWorkspaceInfo keys in JSON", () => {
+    const result = taskWorkspaceView(mockInfo, true);
+    expect(leaksRawInfoKeys(result)).toBe(false);
   });
 });
 
@@ -83,12 +105,34 @@ describe("spawnTaskWorkspaceView", () => {
     expect(result).not.toHaveProperty("localWorkspaceDir");
     expect(result).not.toHaveProperty("agentsMd");
     expect(result).not.toHaveProperty("contextPackMd");
+    expect(result).not.toHaveProperty("cdHint");
+  });
+
+  it("debug=false: still contains safe fields", () => {
+    const result = spawnTaskWorkspaceView("task-001", mockInfo, false);
+    expect(result).toHaveProperty("taskId", "task-001");
+    expect(result).toHaveProperty("selectedFiles");
+    expect(result).toHaveProperty("createdAt");
+    expect(result).toHaveProperty("hint");
+  });
+
+  it("debug=false: does not leak raw TaskWorkspaceInfo keys in JSON", () => {
+    const result = spawnTaskWorkspaceView("task-001", mockInfo, false);
+    expect(leaksRawInfoKeys(result)).toBe(false);
   });
 
   it("debug=true: includes local debug fields", () => {
     const result = spawnTaskWorkspaceView("task-001", mockInfo, true);
     expect(result).toHaveProperty("localWorkspaceDir");
+    expect(result).toHaveProperty("agentsMd");
+    expect(result).toHaveProperty("contextPackMd");
+    expect(result).toHaveProperty("cdHint");
     expect(containsAbsPath(result)).toBe(true);
+  });
+
+  it("debug=true: does not leak raw TaskWorkspaceInfo keys in JSON", () => {
+    const result = spawnTaskWorkspaceView("task-001", mockInfo, true);
+    expect(leaksRawInfoKeys(result)).toBe(false);
   });
 });
 

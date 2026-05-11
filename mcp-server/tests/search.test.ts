@@ -35,8 +35,11 @@ describe("hybridSearch", () => {
 
     expect(results).toHaveLength(2);
     expect(results[0].source).toBe("semantic");
-    expect(results[0].score).toBeCloseTo(0.9, 1); // 1 - 0.1
-    expect(results[1].score).toBeCloseTo(0.6, 1); // 1 - 0.4
+    // After applyHitCountBoost: normScore×0.7 + hitCount×0.3
+    // score[0] = (0.9/0.9)×0.7 + 0 = 0.7
+    // score[1] = (0.6/0.9)×0.7 + 0 ≈ 0.467
+    expect(results[0].score).toBeCloseTo(0.7, 1);
+    expect(results[1].score).toBeCloseTo(0.47, 1);
     // No Memgraph queries should have been made (except none)
     expect(memgraph.calls).toHaveLength(0);
   });
