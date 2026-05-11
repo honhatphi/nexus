@@ -7,7 +7,7 @@
 
 ## Workflow for every coding task
 
-1. **`nexus_build_context_pack`** — always start here. Pass `workspace_id`, `task`, and optionally `task_id` (from `nexus_open_task`).
+1. **`nexus_build_context_pack`** — always start here. Pass `task`; `workspace_id` is optional and only needed when the auto-resolved workspace is wrong.
 2. **`nexus_open_task`** — open a ledger entry so decisions and touched files are tracked.
 3. **`nexus_get_code_snippet`** — read file excerpts, but only for files listed in the context pack manifest.
 4. **`nexus_update_ledger`** after each meaningful step (state change, file modified, decision made).

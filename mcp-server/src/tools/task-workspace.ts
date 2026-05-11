@@ -27,8 +27,8 @@ export function registerTaskWorkspaceTools(
     {
       description: [
         "Create an isolated task workspace for a task.",
-        "Selected files are symlinked from the real repo.",
-        "Codex should cd into the returned workspaceDir and work only with selected-files/.",
+        "Selected files are copied from the real repo into an isolated directory.",
+        "Codex should work only with selected-files/ inside the workspace.",
       ].join(" "),
       inputSchema: {
         task_id: z
@@ -57,6 +57,12 @@ export function registerTaskWorkspaceTools(
           .describe(
             "Explicit relative file paths to include in the workspace. If omitted, derived from context pack manifest.",
           ),
+        debug: z
+          .boolean()
+          .optional()
+          .describe(
+            "When true, includes absolute local paths (workspaceDir, agentsMd, contextPackMd) in the response.",
+          ),
       },
     },
     async ({
@@ -66,6 +72,7 @@ export function registerTaskWorkspaceTools(
       workspace_id,
       cwd,
       selected_files,
+      debug = false,
     }) => {
       try {
         const startDir = cwd ?? process.cwd();
@@ -120,12 +127,18 @@ export function registerTaskWorkspaceTools(
               type: "text" as const,
               text: JSON.stringify(
                 {
-                  workspaceDir: info.workspaceDir,
+                  taskId: task_id,
                   selectedFiles: info.selectedFiles,
-                  agentsMd: info.agentsMdPath,
-                  contextPackMd: info.contextPackMdPath,
                   createdAt: info.createdAt,
-                  hint: `cd "${info.workspaceDir}" && codex`,
+                  hint: `Task workspace ready. Use taskId '${task_id}' with nexus_get_task_workspace or nexus_apply_task_patch.`,
+                  ...(debug
+                    ? {
+                        localWorkspaceDir: info.workspaceDir,
+                        agentsMd: info.agentsMdPath,
+                        contextPackMd: info.contextPackMdPath,
+                        cdHint: `cd "${info.workspaceDir}" && codex`,
+                      }
+                    : {}),
                 },
                 null,
                 2,

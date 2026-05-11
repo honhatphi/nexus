@@ -2,7 +2,7 @@
 // TaskWorkspaceManager (PR 12)
 // Creates an isolated task workspace under
 // ~/.nexus/tasks/<taskId>/workspace/ with selected files
-// symlinked from the real repo. Codex runs inside and only
+// copied from the real repo. Codex runs inside and only
 // sees what was selected.
 // ─────────────────────────────────────────────────────────────
 

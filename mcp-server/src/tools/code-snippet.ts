@@ -40,43 +40,53 @@ export function registerCodeSnippetTool(
   server: McpServer,
   defaultWorkspaceId: string,
 ): void {
-  server.registerTool("nexus_get_code_snippet", {
-    description: "Read a line-range excerpt from a file that is listed in the context pack manifest. Always provide contextPackId and sourceId — this enforces the manifest guard and prevents unbounded file reads. Token-capped at maxTokens (default 1500).",
-    inputSchema: {
-      workspace_id: z
-        .string()
-        .optional()
-        .describe(
-          `Workspace ID owning the context pack (default: ${defaultWorkspaceId}).`,
-        ),
-      context_pack_id: z
-        .string()
-        .describe("Context pack ID returned by nexus_build_context_pack."),
-      source_id: z
-        .string()
-        .describe(
-          "A sourceId (file path) listed in the context pack manifest.",
-        ),
-      file_root: z
-        .string()
-        .optional()
-        .describe(
-          "Absolute path used to resolve relative source paths (e.g. the repo root). Falls back to NEXUS_WORKSPACE_ROOT env var, then process.cwd().",
-        ),
-      start_line: z
-        .number()
-        .optional()
-        .describe("1-based start line (default: 1)."),
-      end_line: z
-        .number()
-        .optional()
-        .describe("Inclusive end line (default: start_line + 49)."),
-      max_tokens: z
-        .number()
-        .optional()
-        .describe("Token cap for the excerpt (default: 1500)."),
+  server.registerTool(
+    "nexus_get_code_snippet",
+    {
+      description:
+        "Read a line-range excerpt from a file that is listed in the context pack manifest. Always provide contextPackId and sourceId — this enforces the manifest guard and prevents unbounded file reads. Token-capped at maxTokens (default 1500).",
+      inputSchema: {
+        workspace_id: z
+          .string()
+          .optional()
+          .describe(
+            `Workspace ID owning the context pack (default: ${defaultWorkspaceId}).`,
+          ),
+        context_pack_id: z
+          .string()
+          .describe("Context pack ID returned by nexus_build_context_pack."),
+        source_id: z
+          .string()
+          .describe(
+            "A sourceId (file path) listed in the context pack manifest.",
+          ),
+        file_root: z
+          .string()
+          .optional()
+          .describe(
+            "Absolute path used to resolve relative source paths (e.g. the repo root). Falls back to NEXUS_WORKSPACE_ROOT env var, then process.cwd().",
+          ),
+        start_line: z
+          .number()
+          .optional()
+          .describe("1-based start line (default: 1)."),
+        end_line: z
+          .number()
+          .optional()
+          .describe("Inclusive end line (default: start_line + 49)."),
+        max_tokens: z
+          .number()
+          .optional()
+          .describe("Token cap for the excerpt (default: 1500)."),
+        debug: z
+          .boolean()
+          .optional()
+          .describe(
+            "When true, includes the resolved absolute file path in the response (for developer debugging only).",
+          ),
+      },
     },
-  }, async ({
+    async ({
       workspace_id,
       context_pack_id,
       source_id,
@@ -84,6 +94,7 @@ export function registerCodeSnippetTool(
       start_line = 1,
       end_line,
       max_tokens = 1500,
+      debug = false,
     }) => {
       const resolvedWorkspace = workspace_id ?? defaultWorkspaceId;
       // ── Manifest guard ──────────────────────────────────────
@@ -139,9 +150,7 @@ export function registerCodeSnippetTool(
 
       // Resolve relative paths against file_root → NEXUS_WORKSPACE_ROOT → cwd
       const resolvedRoot =
-        file_root ??
-        process.env.NEXUS_WORKSPACE_ROOT ??
-        process.cwd();
+        file_root ?? process.env.NEXUS_WORKSPACE_ROOT ?? process.cwd();
       const resolvedPath = path.isAbsolute(actualSource)
         ? actualSource
         : path.resolve(resolvedRoot, actualSource);
@@ -171,7 +180,8 @@ export function registerCodeSnippetTool(
               type: "text" as const,
               text: JSON.stringify(
                 {
-                  source: resolvedPath,
+                  source: actualSource,
+                  ...(debug ? { resolvedPath } : {}),
                   startLine: start_line,
                   endLine: effectiveEnd,
                   estimatedTokens: estimateTokens(result),
@@ -197,5 +207,6 @@ export function registerCodeSnippetTool(
           isError: true,
         };
       }
-    });
+    },
+  );
 }
