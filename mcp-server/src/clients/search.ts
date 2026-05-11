@@ -161,6 +161,35 @@ function fuseResults(
 }
 
 /**
+ * Boost final search scores using hit_count stored in ChromaDB metadata.
+ *
+ * Human memory analogy: frequently-accessed memories surface faster.
+ * Formula: final = rrf_normalized × 0.7 + hit_count_normalized × 0.3
+ *
+ * Both axes are normalized to [0, 1] before blending so hit_count never
+ * dominates purely on magnitude.
+ */
+function applyHitCountBoost(
+  results: HybridSearchResult[],
+): HybridSearchResult[] {
+  if (results.length === 0) return results;
+
+  const maxScore = Math.max(...results.map((r) => r.score));
+  const maxHit = Math.max(
+    1,
+    ...results.map((r) => Number(r.metadata.hit_count ?? 0)),
+  );
+
+  return results
+    .map((r) => {
+      const normScore = maxScore > 0 ? r.score / maxScore : 0;
+      const normHit = Number(r.metadata.hit_count ?? 0) / maxHit;
+      return { ...r, score: normScore * 0.7 + normHit * 0.3 };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+
+/**
  * Execute a hybrid search combining semantic (ChromaDB) and keyword
  * (Memgraph text) search results using Reciprocal Rank Fusion.
  */
@@ -173,13 +202,14 @@ export async function hybridSearch(
 ): Promise<HybridSearchResult[]> {
   if (mode === "semantic") {
     const results = await chromadb.search(query, topK);
-    return results.map((r, i) => ({
+    const mapped = results.map((r) => ({
       id: r.id,
       document: r.document,
       metadata: r.metadata,
       score: 1 - r.distance, // convert distance to similarity
       source: "semantic" as const,
     }));
+    return applyHitCountBoost(mapped);
   }
 
   if (mode === "keyword") {
@@ -189,13 +219,16 @@ export async function hybridSearch(
       score: rrfScore(i + 1),
       source: "keyword" as const,
     }));
+    // Note: keyword results have no hit_count metadata — boost not applied.
   }
 
-  // Hybrid mode: run both in parallel, then fuse
+  // Hybrid mode: run both in parallel, fuse via RRF, then boost by hit_count
   const [semanticResults, keywordResultsList] = await Promise.all([
     chromadb.search(query, topK),
     keywordSearch(memgraph, query, topK),
   ]);
 
-  return fuseResults(semanticResults, keywordResultsList, topK);
+  return applyHitCountBoost(
+    fuseResults(semanticResults, keywordResultsList, topK),
+  );
 }

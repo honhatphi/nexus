@@ -6,10 +6,12 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "tsc --watch & node --watch dist/index.js",
+    "start": "node --env-file=../.env dist/index.js",
+    "dev": "tsc --watch & node --env-file=../.env --watch dist/index.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "consolidate": "node ../scripts/consolidation.mjs",
+    "consolidate:dry": "node ../scripts/consolidation.mjs --dry-run"
   },
   "engines": {
     "node": ">=20"
@@ -18,6 +20,7 @@
     "@chroma-core/default-embed": "^0.1.9",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@nexus-hub/common-tools": "file:../nexus-hub/common-tools",
+    "@nexus-hub/core": "file:../nexus-hub/core",
     "chromadb": "^3.4.3",
     "neo4j-driver": "^6.0.1",
     "zod": "^3.25.76"

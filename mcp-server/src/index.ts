@@ -14,6 +14,25 @@ import {
   registerProcessFlowsTool,
   registerResources,
 } from "./tools/resources.js";
+import { registerScanRisksTool } from "./tools/scan-risks.js";
+import { registerLedgerTools } from "./tools/ledger.js";
+import { registerArtifactTools } from "./tools/artifacts.js";
+import { registerContextPackTool } from "./tools/context-pack.js";
+import { registerCodeSnippetTool } from "./tools/code-snippet.js";
+import { registerWorkspaceTools } from "./tools/workspace.js";
+import { registerTaskWorkspaceTools } from "./tools/task-workspace.js";
+import {
+  NexusCore,
+  MemgraphGraphStore,
+  ChromadbVectorStore,
+  ExistingHybridRetriever,
+  ExistingPipelineIndexer,
+  FileLedgerStore,
+  LedgerService,
+  FileArtifactStore,
+  ArtifactService,
+  ContextPackBuilder,
+} from "@nexus-hub/core";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -21,6 +40,67 @@ async function main(): Promise<void> {
   // ── Initialize DB clients ──────────────────────────────────
   const memgraph = new MemgraphClient(config.memgraph);
   const chromadb = new ChromaDBClient(config.chromadb);
+
+  // ── A1: Bootstrap ChromaDB collection ─────────────────────
+  try {
+    await chromadb.bootstrap();
+    console.log("  ChromaDB     : collection ready");
+  } catch (err) {
+    console.warn(`  ChromaDB     : bootstrap warning — ${err}`);
+  }
+
+  // ── A7: Ensure Memgraph uniqueness constraints ─────────────
+  const constraints = [
+    `CREATE CONSTRAINT ON (f:Function) ASSERT (f.name, f.file, f.service) IS NODE KEY`,
+    `CREATE CONSTRAINT ON (r:APIRoute) ASSERT (r.path, r.method, r.service) IS NODE KEY`,
+    `CREATE CONSTRAINT ON (s:Service) ASSERT s.name IS UNIQUE`,
+    `CREATE CONSTRAINT ON (f:File) ASSERT (f.path, f.service) IS NODE KEY`,
+  ];
+  for (const cypher of constraints) {
+    try {
+      await memgraph.write(cypher, {});
+    } catch {
+      // Constraint already exists — safe to ignore
+    }
+  }
+  console.log("  Memgraph     : constraints applied");
+
+  const workspaceId = config.workspaceId;
+
+  // ── Bootstrap NexusCore façade ─────────────────────────────
+  const graphStore = new MemgraphGraphStore(memgraph);
+  const vectorStore = new ChromadbVectorStore(chromadb);
+  const retriever = new ExistingHybridRetriever(graphStore, vectorStore);
+  const indexer = new ExistingPipelineIndexer(
+    graphStore,
+    vectorStore,
+    workspaceId,
+  );
+
+  const core = new NexusCore({
+    graph: graphStore,
+    vector: vectorStore,
+    retriever,
+    indexer,
+  });
+  console.log("  NexusCore    : façade ready");
+
+  // ── Bootstrap Memory Engine + Artifact Store ───────────────
+  const fileLedgerStore = new FileLedgerStore(workspaceId);
+  const ledgerService = new LedgerService(fileLedgerStore);
+  const artifactService = new ArtifactService(
+    new FileArtifactStore(workspaceId),
+  );
+  const contextPackBuilder = new ContextPackBuilder(
+    graphStore,
+    retriever,
+    fileLedgerStore,
+  );
+  console.log(
+    `  Memory       : ledger store ready (workspace: ${workspaceId})`,
+  );
+  console.log(`  Artifacts    : store ready`);
+  console.log(`  ContextPack  : builder ready`);
 
   // ── HTTP transport (Streamable HTTP) ───────────────────────
   const httpServer = http.createServer(async (req, res) => {
@@ -38,14 +118,26 @@ async function main(): Promise<void> {
         version: "0.1.0",
       });
 
-      registerTools(server, memgraph, chromadb);
-      registerParserTool(server);
-      registerSyncTool(server, memgraph, chromadb);
+      // ── New high-level tools (always registered) ──────────
+      registerLedgerTools(server, ledgerService);
+      registerArtifactTools(server, artifactService);
+      registerContextPackTool(server, contextPackBuilder, config.budget);
+      registerCodeSnippetTool(server, config.workspaceId);
+      registerContextTool(server, core);
       registerDetectChangesTool(server, memgraph);
-      registerContextTool(server, memgraph);
-      registerAugmentTool(server, memgraph);
-      registerProcessFlowsTool(server, memgraph);
-      registerResources(server, memgraph);
+      registerSyncTool(server, memgraph, chromadb);
+      registerWorkspaceTools(server, indexer);
+      registerTaskWorkspaceTools(server, contextPackBuilder, config);
+
+      // ── Legacy tools (opt-in via NEXUS_ENABLE_LEGACY_TOOLS=1) ─
+      if (config.enableLegacyTools) {
+        registerTools(server, memgraph, chromadb);
+        registerParserTool(server);
+        registerAugmentTool(server, memgraph);
+        registerProcessFlowsTool(server, memgraph);
+        registerResources(server, memgraph);
+        registerScanRisksTool(server, memgraph);
+      }
 
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,

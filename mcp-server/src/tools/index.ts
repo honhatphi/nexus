@@ -4,6 +4,7 @@ import { execSync } from "node:child_process";
 import { MemgraphClient } from "../clients/memgraph.js";
 import { ChromaDBClient } from "../clients/chromadb.js";
 import { hybridSearch, type SearchMode } from "../clients/search.js";
+import type { GraphStore } from "@nexus-hub/core";
 
 // ── Staleness Detection ──────────────────────────────────────
 
@@ -17,12 +18,12 @@ interface StalenessWarning {
 }
 
 export async function checkAllStaleness(
-  memgraph: MemgraphClient,
+  graph: GraphStore | MemgraphClient,
 ): Promise<StalenessWarning[]> {
   const warnings: StalenessWarning[] = [];
 
   try {
-    const services = await memgraph.query(
+    const services = await graph.query(
       `MATCH (s:Service) WHERE s.lastSyncCommit IS NOT NULL
        RETURN s.name AS name, s.lastSyncCommit AS commit`,
     );
@@ -131,7 +132,6 @@ export function registerTools(
 
       try {
         const rows = await memgraph.query(cypher, params ?? {});
-        const staleness = await checkAllStaleness(memgraph);
         return {
           content: [
             {
@@ -140,9 +140,6 @@ export function registerTools(
                 {
                   results: rows,
                   count: rows.length,
-                  ...(staleness.length > 0
-                    ? { stalenessWarnings: staleness }
-                    : {}),
                 },
                 null,
                 2,
@@ -195,7 +192,40 @@ export function registerTools(
           topK,
           mode as SearchMode,
         );
-        const staleness = await checkAllStaleness(memgraph);
+
+        // ── Learning Layer: fire-and-forget side effects ───────
+        // 1. Log QueryEvent to Memgraph for daily consolidation analytics
+        const topResult = results[0];
+        memgraph
+          .write(
+            `CREATE (:QueryEvent {
+              query:         $query,
+              timestampMs:   $timestampMs,
+              topResultId:   $topResultId,
+              topScore:      $topScore,
+              resultCount:   $resultCount,
+              mode:          $mode
+            })`,
+            {
+              query,
+              timestampMs: Date.now(),
+              topResultId: topResult?.id ?? "",
+              topScore: topResult?.score ?? 0,
+              resultCount: results.length,
+              mode,
+            },
+          )
+          .catch(() => {}); // non-critical
+
+        // 2. Increment hit_count in ChromaDB for semantic/hybrid results
+        const chromaIds = results
+          .filter((r) => r.source === "semantic" || r.source === "both")
+          .map((r) => r.id);
+        if (chromaIds.length > 0) {
+          chromadb.incrementHitCount(chromaIds).catch(() => {}); // non-critical
+        }
+        // ── End Learning Layer ──────────────────────────────────
+
         return {
           content: [
             {
@@ -205,9 +235,6 @@ export function registerTools(
                   results,
                   count: results.length,
                   mode,
-                  ...(staleness.length > 0
-                    ? { stalenessWarnings: staleness }
-                    : {}),
                 },
                 null,
                 2,
@@ -257,7 +284,6 @@ export function registerTools(
       try {
         const deps = await memgraph.getImpact(name, maxDepth, min_confidence);
         const related = await chromadb.search(name, 3);
-        const staleness = await checkAllStaleness(memgraph);
 
         return {
           content: [
@@ -271,9 +297,6 @@ export function registerTools(
                   dependencies: deps,
                   dependencyCount: deps.length,
                   relatedCode: related,
-                  ...(staleness.length > 0
-                    ? { stalenessWarnings: staleness }
-                    : {}),
                 },
                 null,
                 2,
@@ -351,6 +374,137 @@ export function registerTools(
                   status: "stale",
                   message: `${staleness.length} service(s) have stale KB data. Re-sync recommended.`,
                   staleServices: staleness,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: String(err) }),
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // ── 5. query_log ──────────────────────────────────────────
+  server.tool(
+    "query_log",
+    "Analytics over the KB query log (Learning Layer). Returns usage patterns from QueryEvent nodes: top queried terms, low-score gaps (KB holes), and recent activity. Use this to understand what agents are searching for and where the KB is lacking.",
+    {
+      kind: z
+        .enum(["top_queries", "gap_queries", "recent", "hot_chunks"])
+        .default("top_queries")
+        .describe(
+          "'top_queries': most frequent queries. 'gap_queries': frequent queries with low KB scores (potential gaps). 'recent': last N queries. 'hot_chunks': ChromaDB chunks with highest hit_count.",
+        ),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(50)
+        .default(10)
+        .describe("Number of results to return (default 10)."),
+      since_days: z
+        .number()
+        .int()
+        .min(1)
+        .max(90)
+        .default(7)
+        .describe("Look back window in days (default 7)."),
+    },
+    async ({ kind, limit, since_days }) => {
+      try {
+        const sinceMs = Date.now() - since_days * 24 * 60 * 60 * 1000;
+        const limitInt = Math.trunc(limit); // Memgraph requires literal integer in LIMIT
+
+        let rows: Record<string, unknown>[];
+
+        if (kind === "top_queries") {
+          rows = await memgraph.query(
+            `MATCH (e:QueryEvent)
+             WHERE e.timestampMs >= $sinceMs
+             RETURN e.query AS query,
+                    count(*) AS frequency,
+                    avg(e.topScore) AS avgScore
+             ORDER BY frequency DESC
+             LIMIT ${limitInt}`,
+            { sinceMs },
+          );
+        } else if (kind === "gap_queries") {
+          // Low avgScore = KB doesn't have good answers for these queries
+          rows = await memgraph.query(
+            `MATCH (e:QueryEvent)
+             WHERE e.timestampMs >= $sinceMs
+               AND e.topScore < 0.4
+             RETURN e.query AS query,
+                    count(*) AS frequency,
+                    avg(e.topScore) AS avgScore
+             ORDER BY frequency DESC, avgScore ASC
+             LIMIT ${limitInt}`,
+            { sinceMs },
+          );
+        } else if (kind === "recent") {
+          rows = await memgraph.query(
+            `MATCH (e:QueryEvent)
+             RETURN e.query AS query,
+                    e.timestampMs AS timestampMs,
+                    e.topScore AS score,
+                    e.mode AS mode,
+                    e.topResultId AS topResultId
+             ORDER BY e.timestampMs DESC
+             LIMIT ${limitInt}`,
+            {},
+          );
+          // Convert epoch ms to ISO strings for readability
+          rows = rows.map((r) => ({
+            ...r,
+            timestamp: r.timestampMs
+              ? new Date(Number(r.timestampMs)).toISOString()
+              : null,
+          }));
+        } else {
+          // hot_chunks: aggregate which result IDs appear most in query log
+          rows = await memgraph.query(
+            `MATCH (e:QueryEvent)
+             WHERE e.timestampMs >= $sinceMs
+             RETURN e.topResultId AS chunkId,
+                    count(*) AS appearances,
+                    avg(e.topScore) AS avgScore
+             ORDER BY appearances DESC
+             LIMIT ${limitInt}`,
+            { sinceMs },
+          );
+        }
+
+        const totalEvents = await memgraph.query(
+          `MATCH (e:QueryEvent) WHERE e.timestampMs >= $sinceMs RETURN count(e) AS total`,
+          { sinceMs },
+        );
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  kind,
+                  since_days,
+                  totalQueriesInWindow: Number(totalEvents[0]?.total ?? 0),
+                  results: rows,
+                  count: rows.length,
+                  tip:
+                    kind === "gap_queries" && rows.length > 0
+                      ? "These queries returned low-quality results. Consider augmenting KB entries or syncing the relevant services."
+                      : undefined,
                 },
                 null,
                 2,

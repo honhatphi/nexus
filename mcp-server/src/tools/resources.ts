@@ -36,15 +36,18 @@ export function registerProcessFlowsTool(
     },
     async ({ function_name, service, max_depth }) => {
       try {
-        const serviceFilter = service
+        const forwardServiceFilter = service
           ? "AND start.service = $service AND end.service = $service"
+          : "";
+        const backwardServiceFilter = service
+          ? "AND entry.service = $service AND target.service = $service"
           : "";
 
         // Forward traces: function → leaf (no outgoing CALLS)
         const forwardTraces = await memgraph.query(
           `MATCH path = (start:Function {name: $name})-[:CALLS*1..${max_depth}]->(end:Function)
            WHERE start <> end
-             ${serviceFilter}
+             ${forwardServiceFilter}
            WITH path, end, size(nodes(path))-1 AS depth
            OPTIONAL MATCH (end)-[:CALLS]->(next:Function)
            WITH path, depth, next
@@ -61,7 +64,7 @@ export function registerProcessFlowsTool(
         const backwardTraces = await memgraph.query(
           `MATCH path = (entry:Function)-[:CALLS*1..${max_depth}]->(target:Function {name: $name})
            WHERE entry <> target
-             ${serviceFilter}
+             ${backwardServiceFilter}
            WITH path, entry, size(nodes(path))-1 AS depth
            OPTIONAL MATCH (prev:Function)-[:CALLS]->(entry)
            WITH path, depth, prev

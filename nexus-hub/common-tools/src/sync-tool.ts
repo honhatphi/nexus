@@ -27,6 +27,7 @@ import { parsePhase } from "./pipeline/phase-1-parse.js";
 import { graphUpsertPhase } from "./pipeline/phase-2-graph.js";
 import { vectorUpsertPhase } from "./pipeline/phase-3-vectors.js";
 import { metadataPhase } from "./pipeline/phase-4-metadata.js";
+import { snapshotPhase } from "./pipeline/phase-4b-snapshot.js";
 import { importResolutionPhase } from "./pipeline/phase-5-imports.js";
 import { heritagePhase } from "./pipeline/phase-6-heritage.js";
 import { communityPhase } from "./pipeline/phase-7-community.js";
@@ -36,6 +37,7 @@ import { grpcLinkagePhase } from "./pipeline/phase-8c-grpc-linkage.js";
 import { messagingLinkagePhase } from "./pipeline/phase-8d-messaging-linkage.js";
 import { processTracingPhase } from "./pipeline/phase-8-process.js";
 import { typeResolutionPhase } from "./pipeline/phase-9-types.js";
+import { schemaValidationPhase } from "./pipeline/phase-10-schema-validate.js";
 
 // ─────────────────────────────────────────────────────────────
 // Configuration
@@ -119,6 +121,7 @@ export class SyncServiceKnowledge {
       .register(graphUpsertPhase)
       .register(vectorUpsertPhase)
       .register(metadataPhase)
+      .register(snapshotPhase)
       .register(importResolutionPhase)
       .register(heritagePhase)
       .register(communityPhase)
@@ -127,7 +130,8 @@ export class SyncServiceKnowledge {
       .register(grpcLinkagePhase)
       .register(messagingLinkagePhase)
       .register(processTracingPhase)
-      .register(typeResolutionPhase);
+      .register(typeResolutionPhase)
+      .register(schemaValidationPhase);
   }
 
   // ── Public API ───────────────────────────────────────────
@@ -136,7 +140,7 @@ export class SyncServiceKnowledge {
     const absPath = path.resolve(servicePath);
     const serviceName = path.basename(absPath);
 
-    // Validate
+    // Validate path
     try {
       const stat = await fs.stat(absPath);
       if (!stat.isDirectory()) {
@@ -153,6 +157,10 @@ export class SyncServiceKnowledge {
         `${absPath} does not exist.`,
       );
     }
+
+    // ── preSync health check (A2) ─────────────────────────
+    const healthError = await this.preSync(serviceName, absPath);
+    if (healthError) return healthError;
 
     // Build pipeline dependencies
     const graphClient = this.createGraphClient();
@@ -256,5 +264,43 @@ export class SyncServiceKnowledge {
       },
       errors: [msg],
     };
+  }
+
+  /**
+   * A2 — preSync health check.
+   * Verifies Memgraph and ChromaDB are reachable before starting the pipeline.
+   * Returns a SyncReport error if any dependency is down; null if all healthy.
+   */
+  private async preSync(
+    serviceName: string,
+    absPath: string,
+  ): Promise<SyncReport | null> {
+    // Check Memgraph
+    try {
+      const session = this.driver.session({ defaultAccessMode: "READ" });
+      await session.run("RETURN 1");
+      await session.close();
+    } catch (err) {
+      return this.errorReport(
+        serviceName,
+        absPath,
+        `preSync: Memgraph unreachable — ${String(err)}`,
+      );
+    }
+
+    // Check ChromaDB — getOrCreateCollection as a lightweight ping
+    try {
+      await this.chromaClient.getOrCreateCollection({
+        name: this.collectionName,
+      });
+    } catch (err) {
+      return this.errorReport(
+        serviceName,
+        absPath,
+        `preSync: ChromaDB unreachable — ${String(err)}`,
+      );
+    }
+
+    return null;
   }
 }

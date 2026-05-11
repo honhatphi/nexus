@@ -7,18 +7,17 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { MemgraphClient } from "../clients/memgraph.js";
+import type { INexusCore } from "@nexus-hub/core";
 import { checkAllStaleness } from "./index.js";
 
-export function registerContextTool(
-  server: McpServer,
-  memgraph: MemgraphClient,
-): void {
+export function registerContextTool(server: McpServer, core: INexusCore): void {
   server.tool(
     "get_symbol_context",
     "Get a 360-degree view of a symbol (function, class, or method) in a single call. Returns: callers (who calls it), callees (what it calls), community membership, process/execution flows, class heritage (extends/implements), and infrastructure patterns. Use this instead of multiple separate queries.",
     {
-      name: z.string().describe("Symbol name to look up (function, class, or method)."),
+      name: z
+        .string()
+        .describe("Symbol name to look up (function, class, or method)."),
       service: z
         .string()
         .optional()
@@ -26,11 +25,12 @@ export function registerContextTool(
     },
     async ({ name, service }) => {
       try {
+        const graph = core.graph;
         const svcFilter = service ? "AND n.service = $service" : "";
         const svcParam = service ?? "";
 
         // 1. Symbol info
-        const symbols = await memgraph.query(
+        const symbols = await graph.query(
           `MATCH (n)
            WHERE (n:Function OR n:Class OR n:Method)
              AND n.name = $name ${svcFilter}
@@ -63,10 +63,9 @@ export function registerContextTool(
 
         // Use first match for scoped queries
         const primary = symbols[0];
-        const primaryFile = primary.file as string;
 
         // 2. Callers (who calls this symbol?) — fan-in
-        const callers = await memgraph.query(
+        const callers = await graph.query(
           `MATCH (caller)-[r:CALLS]->(target)
            WHERE target.name = $name ${svcFilter ? "AND target.service = $service" : ""}
            RETURN DISTINCT
@@ -82,7 +81,7 @@ export function registerContextTool(
         );
 
         // 3. Callees (what does this symbol call?) — fan-out
-        const callees = await memgraph.query(
+        const callees = await graph.query(
           `MATCH (source)-[r:CALLS]->(callee)
            WHERE source.name = $name ${svcFilter ? "AND source.service = $service" : ""}
            RETURN DISTINCT
@@ -98,7 +97,7 @@ export function registerContextTool(
         );
 
         // 4. Community membership
-        const communities = await memgraph.query(
+        const communities = await graph.query(
           `MATCH (n)-[:MEMBER_OF]->(c:Community)
            WHERE n.name = $name ${svcFilter ? "AND n.service = $service" : ""}
            RETURN c.name AS communityName,
@@ -109,7 +108,7 @@ export function registerContextTool(
         );
 
         // 5. Process / execution flow membership
-        const processes = await memgraph.query(
+        const processes = await graph.query(
           `MATCH (n)-[r:STEP_IN_PROCESS]->(p:Process)
            WHERE n.name = $name ${svcFilter ? "AND n.service = $service" : ""}
            RETURN p.name AS processName,
@@ -122,7 +121,7 @@ export function registerContextTool(
         );
 
         // 6. Heritage (extends / implements) — for classes
-        const extendsParents = await memgraph.query(
+        const extendsParents = await graph.query(
           `MATCH (n)-[r:EXTENDS]->(parent)
            WHERE n.name = $name ${svcFilter ? "AND n.service = $service" : ""}
            RETURN parent.name AS name,
@@ -131,7 +130,7 @@ export function registerContextTool(
           { name, service: svcParam },
         );
 
-        const implementsInterfaces = await memgraph.query(
+        const implementsInterfaces = await graph.query(
           `MATCH (n)-[r:IMPLEMENTS]->(iface)
            WHERE n.name = $name ${svcFilter ? "AND n.service = $service" : ""}
            RETURN iface.name AS name,
@@ -140,7 +139,7 @@ export function registerContextTool(
           { name, service: svcParam },
         );
 
-        const children = await memgraph.query(
+        const children = await graph.query(
           `MATCH (child)-[:EXTENDS]->(n)
            WHERE n.name = $name ${svcFilter ? "AND n.service = $service" : ""}
            RETURN child.name AS name,
@@ -150,7 +149,7 @@ export function registerContextTool(
         );
 
         // 7. Infrastructure patterns
-        const infra = await memgraph.query(
+        const infra = await graph.query(
           `MATCH (n)-[r:USES]->(i)
            WHERE n.name = $name ${svcFilter ? "AND n.service = $service" : ""}
            RETURN i.kind AS kind, i.target AS target
@@ -158,8 +157,8 @@ export function registerContextTool(
           { name, service: svcParam },
         );
 
-        // 8. Staleness check
-        const staleness = await checkAllStaleness(memgraph);
+        // 8. Staleness check (uses raw memgraph via index tool shim)
+        const staleness = await checkAllStaleness(core.graph);
 
         const result: Record<string, unknown> = {
           symbol: {

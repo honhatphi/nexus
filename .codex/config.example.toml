@@ -1,0 +1,12 @@
+# Nexus MCP config — Codex CLI example
+# Copy to ~/.codex/config.toml and update workspace_id.
+
+[mcp]
+server_url    = "http://localhost:13100/mcp"
+workspace_id  = "my-project"   # used to scope ledger/artifact/context-pack storage
+
+# Optional: increase context pack token budget (default: 12000)
+# max_context_tokens = 16000
+
+[logging]
+level = "info"

@@ -34,6 +34,35 @@ export { grpcLinkagePhase } from "./pipeline/phase-8c-grpc-linkage.js";
 export { messagingLinkagePhase } from "./pipeline/phase-8d-messaging-linkage.js";
 export { processTracingPhase } from "./pipeline/phase-8-process.js";
 export { typeResolutionPhase } from "./pipeline/phase-9-types.js";
+export { schemaValidationPhase } from "./pipeline/phase-10-schema-validate.js";
+export { snapshotPhase } from "./pipeline/phase-4b-snapshot.js";
+export type { GraphSnapshot } from "./pipeline/phase-4b-snapshot.js";
+export { diffSnapshots } from "./pipeline/graph-diff.js";
+export type { GraphDiff, ContractDriftItem } from "./pipeline/graph-diff.js";
+export { scoreHotspots } from "./pipeline/hotspot-scorer.js";
+export type { HotspotEntry } from "./pipeline/hotspot-scorer.js";
+export {
+  SCHEMA_VERSION,
+  CANONICAL_NODE_LABELS,
+  INFERRED_EDGE_TYPES,
+} from "./pipeline/schema-registry.js";
+export type {
+  CanonicalNode,
+  CanonicalSource,
+  CanonicalNodeLabel,
+  InferredEdgeType,
+} from "./pipeline/schema-registry.js";
+export { buildFingerprint } from "./pipeline/architecture-fingerprint.js";
+export type { ServiceFingerprint } from "./pipeline/architecture-fingerprint.js";
+export {
+  recordCandidatePattern,
+  promoteCandidate,
+  rejectCandidate,
+} from "./pipeline/candidate-pattern.js";
+export type {
+  CandidatePattern,
+  CandidateStatus,
+} from "./pipeline/candidate-pattern.js";
 export { createEmptyContext } from "./pipeline/types.js";
 
 // Parser exports
@@ -54,6 +83,7 @@ export type {
   GraphClient,
   VectorClient,
   CodeParserInterface,
+  FileHashLookup,
 } from "./pipeline/types.js";
 export type { StalenessInfo } from "./pipeline/phase-4-metadata.js";
 export { getCommitCount } from "./pipeline/phase-4-metadata.js";

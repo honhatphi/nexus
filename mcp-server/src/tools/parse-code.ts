@@ -1,7 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import fs from "node:fs/promises";
-import { parseSource, detectLanguage, EXTENSION_MAP } from "@nexus-hub/common-tools";
+import {
+  parseSource,
+  detectLanguage,
+  EXTENSION_MAP,
+} from "@nexus-hub/common-tools";
 import type { ParseResult } from "@nexus-hub/common-tools";
 
 /**
@@ -16,15 +20,21 @@ export function registerParserTool(server: McpServer): void {
       filePath: z
         .string()
         .optional()
-        .describe("Absolute path to the source file to parse. If provided, source is read from disk."),
+        .describe(
+          "Absolute path to the source file to parse. If provided, source is read from disk.",
+        ),
       source: z
         .string()
         .optional()
-        .describe("Raw source code string. Required if filePath is not provided."),
+        .describe(
+          "Raw source code string. Required if filePath is not provided.",
+        ),
       language: z
         .enum(["go", "python", "php", "typescript"])
         .optional()
-        .describe("Explicit language override. Auto-detected from filePath extension if omitted."),
+        .describe(
+          "Explicit language override. Auto-detected from filePath extension if omitted.",
+        ),
     },
     async ({ filePath, source, language }) => {
       try {
@@ -33,15 +43,32 @@ export function registerParserTool(server: McpServer): void {
         let resolvedPath = filePath ?? "inline";
 
         if (filePath && !source) {
+          if (!filePath.startsWith("/")) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: `filePath must be an absolute path. Got: "${filePath}". Example: "/Users/foo/project/cmd/main.go"`,
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
           code = await fs.readFile(filePath, "utf-8");
         }
 
         if (!code) {
           return {
-            content: [{
-              type: "text" as const,
-              text: JSON.stringify({ error: "Either filePath or source must be provided." }),
-            }],
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error: "Either filePath or source must be provided.",
+                }),
+              },
+            ],
             isError: true,
           };
         }
@@ -61,20 +88,24 @@ export function registerParserTool(server: McpServer): void {
         const result = parseSource(resolvedPath, code);
 
         return {
-          content: [{
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          }],
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
         };
       } catch (err) {
         return {
-          content: [{
-            type: "text" as const,
-            text: JSON.stringify({ error: String(err) }),
-          }],
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: String(err) }),
+            },
+          ],
           isError: true,
         };
       }
-    }
+    },
   );
 }

@@ -63,3 +63,20 @@ agent:
     - "Nếu Hub không có context → ghi nhận gap và proceed với best practices."
     - "Khi tạo pattern mới cho 1 service → kiểm tra xem nó có nên promote lên Hub không."
     - "Mỗi service tuân thủ tech stack riêng; không mix runtime giữa các services."
+
+# ─── Quality Gates (Phase E2) ────────────────────────────────
+quality_gates:
+  # 0 = warn on any API contract removal. Increase to allow intentional removals.
+  max_contract_drift: 0
+  # Percent increase in blast radius that triggers a HIGH risk alert.
+  max_blast_radius_increase: 20
+  # Minimum test coverage for hotspot functions (score >= 0.7). Not yet enforced
+  # automatically — used by scan_risks to flag coverage gaps.
+  min_test_coverage_hotspot: 80
+  # Hotspot score threshold above which a function is considered "critical".
+  hotspot_critical_threshold: 0.7
+  # Risk types checked by default when scan_risks is called without riskTypes param.
+  default_risk_types:
+    - security
+    - stability
+    - performance

@@ -187,6 +187,25 @@ export interface PipelineDeps {
   graph: GraphClient;
   vectors: VectorClient;
   parser: CodeParserInterface;
+  /**
+   * Optional persistent hash store for incremental indexing (PR 9).
+   * When provided, file hashes survive MCP server restarts and only
+   * changed files are re-parsed on subsequent syncs.
+   */
+  hashStore?: FileHashLookup;
+}
+
+/**
+ * Minimal interface for persistent file-hash lookup.
+ * Structurally compatible with `JsonFileHashStore` from @nexus-hub/core.
+ */
+export interface FileHashLookup {
+  get(absolutePath: string): Promise<{ contentHash: string } | null>;
+  set(
+    absolutePath: string,
+    entry: { contentHash: string; lastIndexedAt: string },
+  ): Promise<void>;
+  flush(): Promise<void>;
 }
 
 // ─────────────────────────────────────────────────────────────

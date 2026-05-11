@@ -189,7 +189,7 @@ Nexus/
 │   ├── prompts/                   #   Prompt templates
 │   └── skills/                    #   Global skill definitions
 │
-├── mcp-server/                    # MCP Server — Tool gateway (port 3100)
+├── mcp-server/                    # MCP Server — Tool gateway (port 13100)
 │   └── src/
 │       ├── index.ts               #   Server entry (StreamableHTTP)
 │       ├── config.ts              #   Environment config
@@ -223,7 +223,7 @@ Nexus/
 
 ## MCP Tools Reference
 
-The MCP server (`/mcp-server`) exposes 10 tools via HTTP on port 3100.
+The MCP server (`/mcp-server`) exposes 10 tools via HTTP on port 13100.
 Infra runs as Docker containers (`docker compose up -d`) with `restart: unless-stopped`.
 
 | Tool                     | Purpose                                                              |
