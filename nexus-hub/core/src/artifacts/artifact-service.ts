@@ -10,9 +10,9 @@ import type {
   StoreArtifactInput,
   ArtifactExcerpt,
 } from "../ports/artifact-store.js";
+import { CHARS_PER_TOKEN } from "../budget/token-estimator.js";
 
 const DEFAULT_MAX_TOKENS = 1_500;
-const CHARS_PER_TOKEN = 4;
 
 export interface StoreResult {
   artifactId: string;

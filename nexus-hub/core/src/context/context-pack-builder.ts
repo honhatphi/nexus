@@ -15,14 +15,11 @@ import type {
   BuildContextPackInput,
 } from "../contracts/context-pack.js";
 import type { TokenBudget } from "../contracts/token-budget.js";
-import {
-  defaultMaxInputTokens,
-  defaultReservedTokens,
-} from "../env.js";
+import { defaultMaxInputTokens, defaultReservedTokens } from "../env.js";
 import { ContextPackStore } from "./context-pack-store.js";
 import { ContextSectionRenderer } from "./context-section-renderer.js";
+import { estimateTokens } from "../budget/token-estimator.js";
 
-const CHARS_PER_TOKEN = 4;
 const DEFAULT_MAX_FILES = 8;
 const INSTRUCTIONS: string[] = [
   "Use this context pack before reading additional files.",
@@ -30,10 +27,6 @@ const INSTRUCTIONS: string[] = [
   "Update ledger after each meaningful step with nexus_update_ledger.",
   "Store large outputs (logs, diffs) with nexus_store_artifact.",
 ];
-
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / CHARS_PER_TOKEN);
-}
 
 export class ContextPackBuilder {
   private readonly store = new ContextPackStore();
@@ -97,7 +90,10 @@ export class ContextPackBuilder {
     // ── Phase 3: Enrich file_capsule items with actual content ─
     // Delegate to ContextSectionRenderer.
     const { sections, tokensUsed: snippetTokens } =
-      await this.renderer.buildSnippetSections(manifest, budget.maxInputTokens - usedTokens);
+      await this.renderer.buildSnippetSections(
+        manifest,
+        budget.maxInputTokens - usedTokens,
+      );
     usedTokens += snippetTokens;
 
     // ── Phase 4: Add task ledger section if taskId given ─────

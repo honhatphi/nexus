@@ -11,15 +11,9 @@ import { z } from "zod";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { ContextPack } from "@nexus-hub/core";
-import { nexusWorkspaceDir } from "@nexus-hub/core";
+import { nexusWorkspaceDir, estimateTokens } from "@nexus-hub/core";
 import { mcpJson, mcpError } from "../utils/mcp-response.js";
 import { resolveStartDir } from "../utils/workspace-context.js";
-
-const CHARS_PER_TOKEN = 4;
-
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / CHARS_PER_TOKEN);
-}
 
 async function loadContextPack(
   workspaceId: string,

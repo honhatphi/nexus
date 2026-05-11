@@ -9,6 +9,7 @@ import type { ContextPackBuilder } from "@nexus-hub/core";
 import type { Config } from "../config.js";
 import { mcpError, mcpText } from "../utils/mcp-response.js";
 import { resolveWorkspaceFromInput } from "../utils/workspace-context.js";
+import { CHARS_PER_TOKEN } from "@nexus-hub/core";
 
 export function registerContextPackTool(
   server: McpServer,
@@ -69,10 +70,8 @@ export function registerContextPackTool(
     }) => {
       try {
         // ── Zero-config workspace resolution ──────────────────
-        const {
-          workspaceId: resolvedWorkspaceId,
-          warning: workspaceHint,
-        } = await resolveWorkspaceFromInput({ workspaceId: workspace_id, cwd });
+        const { workspaceId: resolvedWorkspaceId, warning: workspaceHint } =
+          await resolveWorkspaceFromInput({ workspaceId: workspace_id, cwd });
 
         const pack = await builder.build({
           workspaceId: resolvedWorkspaceId,
@@ -90,7 +89,6 @@ export function registerContextPackTool(
 
         // Return compact summary: instructions + manifest + sections.
         // Avoid returning the full raw JSON blob which can exceed token budget.
-        const CHARS_PER_TOKEN = 4;
         const outputBudgetChars =
           defaultBudget.reservedOutputTokens * CHARS_PER_TOKEN;
         const packWithHint = workspaceHint

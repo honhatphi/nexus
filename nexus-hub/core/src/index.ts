@@ -126,8 +126,10 @@ export type {
 
 // Budget Engine (PR 8)
 export {
+  CHARS_PER_TOKEN,
   estimateTokens,
   estimateObjectTokens,
+  maxCharsForTokens,
   evaluateBudget,
   limitOutput,
   DefaultBudgetEstimator,

@@ -14,8 +14,7 @@ import type {
   ArtifactExcerpt,
 } from "../ports/artifact-store.js";
 import { nexusWorkspaceDir } from "../env.js";
-
-const CHARS_PER_TOKEN = 4; // approximate
+import { CHARS_PER_TOKEN } from "../budget/token-estimator.js";
 
 export class FileArtifactStore implements ArtifactStore {
   private readonly baseDir: string;

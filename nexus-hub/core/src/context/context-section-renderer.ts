@@ -13,13 +13,9 @@ import type {
   ContextSection,
 } from "../contracts/context-pack.js";
 import { SourceResolver } from "./source-resolver.js";
+import { CHARS_PER_TOKEN, estimateTokens } from "../budget/token-estimator.js";
 
-const CHARS_PER_TOKEN = 4;
 const MAX_SNIPPET_LINES = 80;
-
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / CHARS_PER_TOKEN);
-}
 
 export class ContextSectionRenderer {
   private readonly resolver = new SourceResolver();
