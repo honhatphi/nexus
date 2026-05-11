@@ -31,32 +31,32 @@ export function registerTaskWorkspaceTools(
         "Codex should cd into the returned workspaceDir and work only with selected-files/.",
       ].join(" "),
       inputSchema: {
-      task_id: z
-        .string()
-        .describe("Unique task identifier (e.g. from nexus_open_task)."),
-      task: z.string().describe("Natural language description of the task."),
-      context_pack_id: z
-        .string()
-        .optional()
-        .describe(
-          "Existing context pack ID to use. If omitted, a fresh one is built.",
-        ),
-      workspace_id: z
-        .string()
-        .optional()
-        .describe(
-          "Nexus workspace ID (default: NEXUS_WORKSPACE_ID env or 'default').",
-        ),
-      cwd: z
-        .string()
-        .optional()
-        .describe("Repo directory (default: process.cwd())."),
-      selected_files: z
-        .array(z.string())
-        .optional()
-        .describe(
-          "Explicit relative file paths to include in the workspace. If omitted, derived from context pack manifest.",
-        ),
+        task_id: z
+          .string()
+          .describe("Unique task identifier (e.g. from nexus_open_task)."),
+        task: z.string().describe("Natural language description of the task."),
+        context_pack_id: z
+          .string()
+          .optional()
+          .describe(
+            "Existing context pack ID to use. If omitted, a fresh one is built.",
+          ),
+        workspace_id: z
+          .string()
+          .optional()
+          .describe(
+            "Nexus workspace ID (default: NEXUS_WORKSPACE_ID env or 'default').",
+          ),
+        cwd: z
+          .string()
+          .optional()
+          .describe("Repo directory (default: process.cwd())."),
+        selected_files: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Explicit relative file paths to include in the workspace. If omitted, derived from context pack manifest.",
+          ),
       },
     },
     async ({
@@ -151,7 +151,8 @@ export function registerTaskWorkspaceTools(
   server.registerTool(
     "nexus_get_task_workspace",
     {
-      description: "Get info about an existing task workspace (selected files, paths, created at).",
+      description:
+        "Get info about an existing task workspace (selected files, paths, created at).",
       inputSchema: {
         task_id: z.string().describe("Task identifier."),
       },

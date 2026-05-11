@@ -281,7 +281,11 @@ function walkTs(dir) {
   const files = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory() && entry.name !== "dist" && entry.name !== "node_modules") {
+    if (
+      entry.isDirectory() &&
+      entry.name !== "dist" &&
+      entry.name !== "node_modules"
+    ) {
       files.push(...walkTs(full));
     } else if (entry.isFile() && full.endsWith(".ts")) {
       files.push(full);

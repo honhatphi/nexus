@@ -103,7 +103,8 @@ export class ContextPackBuilder {
         continue;
       if (!item.source || item.source.startsWith("http")) continue;
 
-      const remainingChars = (budget.maxInputTokens - usedTokens) * CHARS_PER_TOKEN;
+      const remainingChars =
+        (budget.maxInputTokens - usedTokens) * CHARS_PER_TOKEN;
       const snippet = await this.readFileSnippet(
         item.source,
         MAX_SNIPPET_LINES,
