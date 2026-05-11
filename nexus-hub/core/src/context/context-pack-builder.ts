@@ -92,8 +92,40 @@ export class ContextPackBuilder {
       usedTokens += estimatedTokens;
     }
 
-    // ── Phase 3: Add task ledger section if taskId given ─────
+    // ── Phase 3: Enrich file_capsule items with actual content ─
+    // Try to read the first MAX_SNIPPET_LINES lines of each file to
+    // give the agent real code to read without extra tool calls.
+    const MAX_SNIPPET_LINES = 80;
     const sections: ContextSection[] = [];
+    for (const item of manifest) {
+      if (usedTokens >= budget.maxInputTokens) break;
+      if (item.type !== "file_capsule" && item.type !== "symbol_context")
+        continue;
+      if (!item.source || item.source.startsWith("http")) continue;
+
+      const remainingChars = (budget.maxInputTokens - usedTokens) * CHARS_PER_TOKEN;
+      const snippet = await this.readFileSnippet(
+        item.source,
+        MAX_SNIPPET_LINES,
+        remainingChars,
+      );
+      if (!snippet) continue;
+
+      const tokenCount = estimateTokens(snippet);
+      if (usedTokens + tokenCount > budget.maxInputTokens) break;
+
+      sections.push({
+        id: `snippet:${item.id}`,
+        title: `File: ${item.source}`,
+        content: snippet,
+        estimatedTokens: tokenCount,
+      });
+      // Update manifest item to reflect real content size
+      item.estimatedTokens = tokenCount;
+      usedTokens += tokenCount;
+    }
+
+    // ── Phase 4: Add task ledger section if taskId given ─────
 
     if (input.taskId && this.memory) {
       const ledger = await this.memory.getTask(input.taskId);
@@ -137,7 +169,7 @@ export class ContextPackBuilder {
       }
     }
 
-    // ── Phase 4: Add repo capsule for high-level orientation ─
+    // ── Phase 5: Add repo capsule for high-level orientation ─
     const repoCapsule = await this.buildRepoCapsule(input.workspaceId);
     if (repoCapsule) {
       const tokenCount = estimateTokens(repoCapsule);
@@ -162,7 +194,7 @@ export class ContextPackBuilder {
       }
     }
 
-    // ── Phase 5: Persist context pack locally ────────────────
+    // ── Phase 6: Persist context pack locally ────────────────
     const packId = `ctxpack_${randomUUID().slice(0, 8)}`;
     await this.persist(input.workspaceId, packId, {
       id: packId,
@@ -196,6 +228,35 @@ export class ContextPackBuilder {
   }
 
   // ── Helpers ──────────────────────────────────────────────────
+
+  private async readFileSnippet(
+    filePath: string,
+    maxLines: number,
+    budgetChars: number,
+  ): Promise<string | null> {
+    // Candidate paths: absolute path first, then NEXUS_WORKSPACE_ROOT relative
+    const candidates: string[] = [filePath];
+    const wsRoot = process.env.NEXUS_WORKSPACE_ROOT;
+    if (wsRoot && !filePath.startsWith("/")) {
+      candidates.push(path.join(wsRoot, filePath));
+    }
+    for (const p of candidates) {
+      try {
+        const content = await fs.readFile(p, "utf8");
+        const lines = content.split("\n");
+        let result = "";
+        for (const line of lines.slice(0, maxLines)) {
+          const next = result + line + "\n";
+          if (next.length > budgetChars) break;
+          result = next;
+        }
+        return result || null;
+      } catch {
+        // try next candidate
+      }
+    }
+    return null;
+  }
 
   private async buildRepoCapsule(workspaceId: string): Promise<string | null> {
     try {

@@ -32,13 +32,14 @@ export interface TaskWorkspaceInfo {
 const WORKSPACE_AGENTS_MD = `# Nexus Task Workspace
 
 This is an isolated task workspace. Only the files in \`selected-files/\` are available.
+Files are **copied** from the real repo — edits here do NOT affect the original repo directly.
 
 ## Workflow
 
 1. Read \`context-pack.md\` for context about this task.
-2. Edit files in \`selected-files/\` directly — they are symlinked to the real repo.
-3. When done, the changes are visible in the real repo via the symlinks.
-4. Use \`nexus_apply_task_patch\` to generate a diff and confirm changes.
+2. Edit files in \`selected-files/\` freely — they are isolated copies.
+3. When done, call \`nexus_apply_task_patch\` to generate a unified diff of your changes.
+4. Review the diff, then apply it to the real repo with \`git apply\` or the patch tool.
 
 ## Rules
 
@@ -96,13 +97,13 @@ export class TaskWorkspaceManager {
       const linkPath = path.join(selectedDir, relFile);
       await fs.mkdir(path.dirname(linkPath), { recursive: true });
 
-      // Create symlink (overwrite if exists)
+      // Copy file for true isolation — edits do not touch the real repo.
+      // PatchGenerator diffs the copy against the original to produce patches.
       try {
-        await fs.unlink(linkPath);
+        await fs.copyFile(absSource, linkPath);
       } catch {
-        // ignore
+        continue;
       }
-      await fs.symlink(absSource, linkPath);
       symlinked.push(relFile);
     }
 

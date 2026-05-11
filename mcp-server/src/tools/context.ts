@@ -249,11 +249,20 @@ export function registerContextTool(server: McpServer, core: INexusCore): void {
           result.stalenessWarnings = staleness;
         }
 
+        // Cap output to ~8000 tokens to prevent context overflow
+        const MAX_OUTPUT_CHARS = 8000 * 4;
+        const raw = JSON.stringify(result, null, 2);
+        const text =
+          raw.length > MAX_OUTPUT_CHARS
+            ? raw.slice(0, MAX_OUTPUT_CHARS) +
+              "\n... [truncated — use nexus_get_code_snippet for file content]"
+            : raw;
+
         return {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(result, null, 2),
+              text,
             },
           ],
         };

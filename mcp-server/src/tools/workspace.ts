@@ -23,12 +23,13 @@ export function registerWorkspaceTools(
         .string()
         .optional()
         .describe(
-          "Directory to search from (default: process.cwd()). Walk upward until .nexus/workspace.yaml is found.",
+          "Directory to search from. Walks upward until .nexus/workspace.yaml is found. Defaults to NEXUS_WORKSPACE_ROOT env var, then process.cwd().",
         ),
     },
     async ({ cwd }) => {
       try {
-        const startDir = cwd ?? process.cwd();
+        const startDir =
+          cwd ?? process.env.NEXUS_WORKSPACE_ROOT ?? process.cwd();
         const found = await WorkspaceResolver.findWorkspaceRoot(startDir);
 
         if (!found) {
@@ -39,6 +40,7 @@ export function registerWorkspaceTools(
                 text: JSON.stringify({
                   error:
                     "No .nexus/workspace.yaml found. Run nexus_resolve_workspace to initialise.",
+                  hint: `Searched from: ${startDir}. Set NEXUS_WORKSPACE_ROOT to the workspace root.`,
                 }),
               },
             ],
@@ -119,7 +121,9 @@ export function registerWorkspaceTools(
       cwd: z
         .string()
         .optional()
-        .describe("Directory to search/init from (default: process.cwd())."),
+        .describe(
+          "Directory to search/init from. Defaults to NEXUS_WORKSPACE_ROOT env var, then process.cwd().",
+        ),
       workspace_id: z
         .string()
         .optional()
@@ -129,7 +133,8 @@ export function registerWorkspaceTools(
     },
     async ({ cwd, workspace_id }) => {
       try {
-        const startDir = cwd ?? process.cwd();
+        const startDir =
+          cwd ?? process.env.NEXUS_WORKSPACE_ROOT ?? process.cwd();
         let found = await WorkspaceResolver.findWorkspaceRoot(startDir);
 
         if (!found && workspace_id) {
@@ -196,7 +201,7 @@ export function registerWorkspaceTools(
         .string()
         .optional()
         .describe(
-          "Path to the repo root or any subdirectory (default: process.cwd()).",
+          "Path to the repo root or any subdirectory. Defaults to NEXUS_WORKSPACE_ROOT env var, then process.cwd().",
         ),
       auto_add_to_workspace: z
         .boolean()
@@ -213,7 +218,8 @@ export function registerWorkspaceTools(
     },
     async ({ cwd, auto_add_to_workspace = true, force_update = false }) => {
       try {
-        const startDir = cwd ?? process.cwd();
+        const startDir =
+          cwd ?? process.env.NEXUS_WORKSPACE_ROOT ?? process.cwd();
         const detected = await RepoDetector.detect(startDir);
 
         if (!detected) {

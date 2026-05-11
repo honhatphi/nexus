@@ -58,6 +58,12 @@ export function registerCodeSnippetTool(
         .describe(
           "A sourceId (file path) listed in the context pack manifest.",
         ),
+      file_root: z
+        .string()
+        .optional()
+        .describe(
+          "Absolute path used to resolve relative source paths (e.g. the repo root). Falls back to NEXUS_WORKSPACE_ROOT env var, then process.cwd().",
+        ),
       start_line: z
         .number()
         .optional()
@@ -75,6 +81,7 @@ export function registerCodeSnippetTool(
       workspace_id,
       context_pack_id,
       source_id,
+      file_root,
       start_line = 1,
       end_line,
       max_tokens = 1500,
@@ -120,9 +127,29 @@ export function registerCodeSnippetTool(
         };
       }
 
+      // ── Resolve file path from manifest item ───────────────
+      // Use the manifest item's actual source field (may differ from
+      // source_id when caller used the display id like "file:svc/path").
+      const manifestItem = pack.manifest.find(
+        (item) =>
+          item.source === source_id ||
+          item.id === source_id ||
+          item.id.endsWith(`/${source_id}`),
+      );
+      const actualSource = manifestItem?.source ?? source_id;
+
+      // Resolve relative paths against file_root → NEXUS_WORKSPACE_ROOT → cwd
+      const resolvedRoot =
+        file_root ??
+        process.env.NEXUS_WORKSPACE_ROOT ??
+        process.cwd();
+      const resolvedPath = path.isAbsolute(actualSource)
+        ? actualSource
+        : path.resolve(resolvedRoot, actualSource);
+
       // ── Read file ───────────────────────────────────────────
       try {
-        const raw = await fs.readFile(source_id, "utf8");
+        const raw = await fs.readFile(resolvedPath, "utf8");
         const allLines = raw.split("\n");
 
         const effectiveEnd =
@@ -145,7 +172,7 @@ export function registerCodeSnippetTool(
               type: "text" as const,
               text: JSON.stringify(
                 {
-                  source: source_id,
+                  source: resolvedPath,
                   startLine: start_line,
                   endLine: effectiveEnd,
                   estimatedTokens: estimateTokens(result),

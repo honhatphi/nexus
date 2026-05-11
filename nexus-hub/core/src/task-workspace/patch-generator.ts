@@ -75,15 +75,7 @@ export class PatchGenerator {
         ? relFile
         : path.join(info.repoRoot, relFile);
 
-      // Resolve the symlink to get the actual file path after edits
-      let resolvedLink: string;
-      try {
-        resolvedLink = await fs.realpath(linkPath);
-      } catch {
-        continue;
-      }
-
-      // Read both versions to check if changed
+      // With copy-based isolation, linkPath IS the modified file (no symlink resolution needed)
       let original = "";
       let modified = "";
       try {
@@ -92,14 +84,14 @@ export class PatchGenerator {
         // Original gone — treat as empty
       }
       try {
-        modified = await fs.readFile(resolvedLink, "utf8");
+        modified = await fs.readFile(linkPath, "utf8");
       } catch {
         continue;
       }
 
       if (original === modified) continue;
 
-      const patch = gitDiff(originalPath, resolvedLink, relFile) ?? "";
+      const patch = gitDiff(originalPath, linkPath, relFile) ?? "";
       if (!patch) continue;
 
       const { added, removed } = countDiffLines(patch);

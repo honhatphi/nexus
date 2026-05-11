@@ -67,10 +67,20 @@ export function registerContextPackTool(
           preferences: max_files ? { maxFiles: max_files } : undefined,
         });
 
+        // Return compact summary: instructions + manifest + sections.
+        // Avoid returning the full raw JSON blob which can exceed token budget.
+        const CHARS_PER_TOKEN = 4;
+        const outputBudgetChars =
+          defaultBudget.reservedOutputTokens * CHARS_PER_TOKEN;
+        const out = JSON.stringify(pack, null, 2);
+        const text =
+          out.length > outputBudgetChars
+            ? out.slice(0, outputBudgetChars) +
+              `\n... [truncated — ${Math.ceil(out.length / CHARS_PER_TOKEN)} estimated tokens total. Use nexus_get_code_snippet for file content.]`
+            : out;
+
         return {
-          content: [
-            { type: "text" as const, text: JSON.stringify(pack, null, 2) },
-          ],
+          content: [{ type: "text" as const, text }],
         };
       } catch (err) {
         return {
