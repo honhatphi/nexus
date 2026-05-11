@@ -75,7 +75,8 @@ export function registerTaskWorkspaceTools(
       debug = false,
     }) => {
       try {
-        const startDir = cwd ?? process.env.NEXUS_WORKSPACE_ROOT ?? process.cwd();
+        const startDir =
+          cwd ?? process.env.NEXUS_WORKSPACE_ROOT ?? process.cwd();
         const detected = await RepoDetector.detect(startDir);
         if (!detected) {
           return {
