@@ -123,9 +123,8 @@ async function main(): Promise<void> {
 
       // ── Legacy tools (opt-in via NEXUS_ENABLE_LEGACY_TOOLS=1) ─
       if (config.enableLegacyTools) {
-        const { registerLegacyTools } = await import(
-          "./tools/legacy/register-legacy-tools.js"
-        );
+        const { registerLegacyTools } =
+          await import("./tools/legacy/register-legacy-tools.js");
         await registerLegacyTools(server, memgraph, chromadb);
       }
 

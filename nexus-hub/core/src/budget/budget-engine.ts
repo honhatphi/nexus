@@ -11,7 +11,11 @@ import type { ArtifactRef } from "../contracts/artifact.js";
 import type { BudgetEstimator } from "../ports/budget-estimator.js";
 import { CHARS_PER_TOKEN, estimateTokens } from "./token-estimator.js";
 
-export { CHARS_PER_TOKEN, estimateTokens, maxCharsForTokens } from "./token-estimator.js";
+export {
+  CHARS_PER_TOKEN,
+  estimateTokens,
+  maxCharsForTokens,
+} from "./token-estimator.js";
 
 // ── Token estimator ──────────────────────────────────────────
 

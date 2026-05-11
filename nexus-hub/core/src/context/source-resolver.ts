@@ -23,16 +23,12 @@ export class SourceResolver {
    * The caller is responsible for trying each candidate in order and
    * using the first one that resolves to a readable file.
    */
-  resolveCandidates(
-    source: string,
-    options?: SourceResolverOptions,
-  ): string[] {
+  resolveCandidates(source: string, options?: SourceResolverOptions): string[] {
     if (path.isAbsolute(source)) {
       return [source];
     }
 
-    const wsRoot =
-      options?.workspaceRoot ?? process.env.NEXUS_WORKSPACE_ROOT;
+    const wsRoot = options?.workspaceRoot ?? process.env.NEXUS_WORKSPACE_ROOT;
 
     const candidates: string[] = [];
     if (wsRoot) {

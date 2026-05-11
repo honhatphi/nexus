@@ -131,15 +131,15 @@ node scripts/smoke-local-first.mjs
 
 What it checks:
 
-| Gate | What | Fix hint |
-|------|------|----------|
-| Build artefact | `mcp-server/dist/index.js` exists | `cd mcp-server && npm run build` |
-| Environment | `NEXUS_WORKSPACE_ROOT` exists if set | Update the env var |
-| Workspace manifest | `.nexus/workspace.yaml` reachable | Call `nexus_resolve_workspace` |
-| Health endpoint | `GET /health → { status: "ok" }` | Start the MCP server |
-| MCP protocol | `initialize` handshake succeeds | Rebuild + restart server |
-| Tool registration | All 6 local-first tools registered | Check server logs |
-| Smoke call | `nexus_resolve_workspace` returns `workspaceId` | Call with `workspace_id` to init |
+| Gate               | What                                            | Fix hint                         |
+| ------------------ | ----------------------------------------------- | -------------------------------- |
+| Build artefact     | `mcp-server/dist/index.js` exists               | `cd mcp-server && npm run build` |
+| Environment        | `NEXUS_WORKSPACE_ROOT` exists if set            | Update the env var               |
+| Workspace manifest | `.nexus/workspace.yaml` reachable               | Call `nexus_resolve_workspace`   |
+| Health endpoint    | `GET /health → { status: "ok" }`                | Start the MCP server             |
+| MCP protocol       | `initialize` handshake succeeds                 | Rebuild + restart server         |
+| Tool registration  | All 6 local-first tools registered              | Check server logs                |
+| Smoke call         | `nexus_resolve_workspace` returns `workspaceId` | Call with `workspace_id` to init |
 
 The script exits 0 on full pass, 1 on any failure. Use `MCP_URL=http://localhost:PORT` to override the default port.
 
@@ -171,15 +171,15 @@ node scripts/doctor-codex-mcp.mjs
 
 ## Environment variables (mcp-server)
 
-| Variable                  | Default                      | Description                                        |
-| ------------------------- | ---------------------------- | -------------------------------------------------- |
-| `MCP_SERVER_PORT`         | `13100`                      | HTTP port                                          |
-| `MEMGRAPH_URI`            | `bolt://localhost:17687`     | Memgraph Bolt URI                                  |
-| `CHROMADB_URL`            | `http://localhost:18000`     | ChromaDB HTTP URL                                  |
-| `NEXUS_WORKSPACE_ID`      | `default`                    | Default workspace ID for ledger/artifact storage   |
-| `NEXUS_WORKSPACE_ROOT`    | _(process.cwd())_            | Directory used as fallback for workspace detection |
-| `NEXUS_DATA_DIR`          | `~/.nexus`                   | Root for all Nexus local data                      |
-| `NEXUS_ENABLE_LEGACY_TOOLS` | `0`                        | Set to `1` to register low-level KB tools          |
+| Variable                    | Default                  | Description                                        |
+| --------------------------- | ------------------------ | -------------------------------------------------- |
+| `MCP_SERVER_PORT`           | `13100`                  | HTTP port                                          |
+| `MEMGRAPH_URI`              | `bolt://localhost:17687` | Memgraph Bolt URI                                  |
+| `CHROMADB_URL`              | `http://localhost:18000` | ChromaDB HTTP URL                                  |
+| `NEXUS_WORKSPACE_ID`        | `default`                | Default workspace ID for ledger/artifact storage   |
+| `NEXUS_WORKSPACE_ROOT`      | _(process.cwd())_        | Directory used as fallback for workspace detection |
+| `NEXUS_DATA_DIR`            | `~/.nexus`               | Root for all Nexus local data                      |
+| `NEXUS_ENABLE_LEGACY_TOOLS` | `0`                      | Set to `1` to register low-level KB tools          |
 
 ---
 
@@ -203,4 +203,3 @@ cd mcp-server && npm run build
 # Reset KB data (DESTRUCTIVE)
 docker compose down -v && docker compose up memgraph chromadb -d
 ```
-

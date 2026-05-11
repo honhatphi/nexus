@@ -19,6 +19,7 @@ nexus workspace init commerce-platform
 ```
 
 **MCP equivalent**:
+
 ```
 nexus_resolve_workspace { workspace_id: "commerce-platform", cwd: "." }
 ```
@@ -38,6 +39,7 @@ nexus workspace status
 ```
 
 **MCP equivalent**:
+
 ```
 nexus_workspace_status { cwd: "." }
 ```
@@ -74,6 +76,7 @@ nexus sync
 ```
 
 **MCP equivalent**:
+
 ```
 nexus_sync_current_repo { auto_add_to_workspace: true, force_update: false }
 ```
@@ -106,12 +109,12 @@ nexus-hub/cli/
 
 ### Shared infrastructure (already exists in `@nexus-hub/core`)
 
-| Concern | Module |
-|---------|--------|
-| Locate workspace root | `WorkspaceResolver` → `nexus-hub/core/src/workspace/workspace-resolver.ts` |
-| Detect git root + repo ID | `RepoDetector` → `nexus-hub/core/src/workspace/repo-detector.ts` |
-| Read/write manifest | `WorkspaceManifest` → `nexus-hub/core/src/workspace/workspace-manifest.ts` |
-| Sync / index repo | `SyncServiceKnowledge` → `nexus-hub/common-tools/src/sync-tool.ts` |
+| Concern                   | Module                                                                     |
+| ------------------------- | -------------------------------------------------------------------------- |
+| Locate workspace root     | `WorkspaceResolver` → `nexus-hub/core/src/workspace/workspace-resolver.ts` |
+| Detect git root + repo ID | `RepoDetector` → `nexus-hub/core/src/workspace/repo-detector.ts`           |
+| Read/write manifest       | `WorkspaceManifest` → `nexus-hub/core/src/workspace/workspace-manifest.ts` |
+| Sync / index repo         | `SyncServiceKnowledge` → `nexus-hub/common-tools/src/sync-tool.ts`         |
 
 > All CLI commands **must** call the same `WorkspaceResolver` / `RepoDetector` as the
 > MCP tools so behaviour is identical regardless of entry point.
@@ -134,13 +137,13 @@ Node.js CLIs, no runtime overhead, fits the existing TypeScript setup.
 
 ## MCP tools mapping summary
 
-| CLI command | MCP tool |
-|-------------|----------|
-| `nexus workspace init` | `nexus_resolve_workspace` |
-| `nexus workspace status` | `nexus_workspace_status` |
-| `nexus workspace add .` | _(no direct tool — gap)_ |
-| `nexus sync` | `nexus_sync_current_repo` |
-| `nexus sync --all` | _(no batch tool — gap)_ |
+| CLI command              | MCP tool                  |
+| ------------------------ | ------------------------- |
+| `nexus workspace init`   | `nexus_resolve_workspace` |
+| `nexus workspace status` | `nexus_workspace_status`  |
+| `nexus workspace add .`  | _(no direct tool — gap)_  |
+| `nexus sync`             | `nexus_sync_current_repo` |
+| `nexus sync --all`       | _(no batch tool — gap)_   |
 
 Gaps marked above should be filled (new MCP tools or updated tools) **before** the CLI
 package is created, so CLI commands are thin wrappers rather than owning business logic.

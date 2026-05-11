@@ -99,20 +99,38 @@ describe("workspaceStatusView", () => {
   const currentRepo = { repoId: "my-repo", branch: "main" };
 
   it("debug=false: does not contain workspaceRoot", () => {
-    const result = workspaceStatusView("ws-1", ABS_PATH, currentRepo, repos, false);
+    const result = workspaceStatusView(
+      "ws-1",
+      ABS_PATH,
+      currentRepo,
+      repos,
+      false,
+    );
     expect(result).not.toHaveProperty("workspaceRoot");
     expect(containsAbsPath(result)).toBe(false);
   });
 
   it("debug=false: still returns workspaceId, repos, currentRepo", () => {
-    const result = workspaceStatusView("ws-1", ABS_PATH, currentRepo, repos, false);
+    const result = workspaceStatusView(
+      "ws-1",
+      ABS_PATH,
+      currentRepo,
+      repos,
+      false,
+    );
     expect(result).toHaveProperty("workspaceId", "ws-1");
     expect(result).toHaveProperty("repos");
     expect(result).toHaveProperty("currentRepo");
   });
 
   it("debug=true: includes workspaceRoot", () => {
-    const result = workspaceStatusView("ws-1", ABS_PATH, currentRepo, repos, true);
+    const result = workspaceStatusView(
+      "ws-1",
+      ABS_PATH,
+      currentRepo,
+      repos,
+      true,
+    );
     expect(result).toHaveProperty("workspaceRoot", ABS_PATH);
     expect(containsAbsPath(result)).toBe(true);
   });
@@ -124,20 +142,38 @@ describe("resolveWorkspaceView", () => {
   const manifestPath = `${ABS_PATH}/.nexus/workspace.yaml`;
 
   it("debug=false: does not contain workspaceRoot or manifestPath", () => {
-    const result = resolveWorkspaceView("ws-1", 3, ABS_PATH, manifestPath, false);
+    const result = resolveWorkspaceView(
+      "ws-1",
+      3,
+      ABS_PATH,
+      manifestPath,
+      false,
+    );
     expect(result).not.toHaveProperty("workspaceRoot");
     expect(result).not.toHaveProperty("manifestPath");
     expect(containsAbsPath(result)).toBe(false);
   });
 
   it("debug=false: returns workspaceId and reposRegistered", () => {
-    const result = resolveWorkspaceView("ws-1", 3, ABS_PATH, manifestPath, false);
+    const result = resolveWorkspaceView(
+      "ws-1",
+      3,
+      ABS_PATH,
+      manifestPath,
+      false,
+    );
     expect(result).toHaveProperty("workspaceId", "ws-1");
     expect(result).toHaveProperty("reposRegistered", 3);
   });
 
   it("debug=true: includes workspaceRoot and manifestPath", () => {
-    const result = resolveWorkspaceView("ws-1", 3, ABS_PATH, manifestPath, true);
+    const result = resolveWorkspaceView(
+      "ws-1",
+      3,
+      ABS_PATH,
+      manifestPath,
+      true,
+    );
     expect(result).toHaveProperty("workspaceRoot", ABS_PATH);
     expect(result).toHaveProperty("manifestPath", manifestPath);
   });
@@ -149,14 +185,30 @@ describe("syncCurrentRepoView", () => {
   const syncResult = { indexed: 12, skipped: 0 };
 
   it("debug=false: does not contain repoRoot", () => {
-    const result = syncCurrentRepoView("my-repo", ABS_PATH, "main", "abc123", false, syncResult, false);
+    const result = syncCurrentRepoView(
+      "my-repo",
+      ABS_PATH,
+      "main",
+      "abc123",
+      false,
+      syncResult,
+      false,
+    );
     const repo = result.repo as Record<string, unknown>;
     expect(repo).not.toHaveProperty("repoRoot");
     expect(containsAbsPath(result)).toBe(false);
   });
 
   it("debug=false: still returns repoId, branch, commit", () => {
-    const result = syncCurrentRepoView("my-repo", ABS_PATH, "main", "abc123", false, syncResult, false);
+    const result = syncCurrentRepoView(
+      "my-repo",
+      ABS_PATH,
+      "main",
+      "abc123",
+      false,
+      syncResult,
+      false,
+    );
     const repo = result.repo as Record<string, unknown>;
     expect(repo).toHaveProperty("repoId", "my-repo");
     expect(repo).toHaveProperty("branch", "main");
@@ -165,14 +217,30 @@ describe("syncCurrentRepoView", () => {
   });
 
   it("debug=true: includes repoRoot", () => {
-    const result = syncCurrentRepoView("my-repo", ABS_PATH, "main", "abc123", false, syncResult, true);
+    const result = syncCurrentRepoView(
+      "my-repo",
+      ABS_PATH,
+      "main",
+      "abc123",
+      false,
+      syncResult,
+      true,
+    );
     const repo = result.repo as Record<string, unknown>;
     expect(repo).toHaveProperty("repoRoot", ABS_PATH);
     expect(containsAbsPath(result)).toBe(true);
   });
 
   it("handles null branch and commit gracefully", () => {
-    const result = syncCurrentRepoView("my-repo", ABS_PATH, null, null, false, syncResult, false);
+    const result = syncCurrentRepoView(
+      "my-repo",
+      ABS_PATH,
+      null,
+      null,
+      false,
+      syncResult,
+      false,
+    );
     const repo = result.repo as Record<string, unknown>;
     expect(repo.branch).toBeNull();
     expect(repo.commit).toBeNull();

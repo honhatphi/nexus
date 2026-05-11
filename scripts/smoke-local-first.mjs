@@ -220,7 +220,9 @@ if (initResp?.result?.serverInfo) {
         "Run with workspace_id to initialise.",
       );
     } else {
-      ok(`nexus_resolve_workspace responded (raw): ${resolveContent.slice(0, 120)}`);
+      ok(
+        `nexus_resolve_workspace responded (raw): ${resolveContent.slice(0, 120)}`,
+      );
     }
   } else {
     fail(

@@ -10,10 +10,7 @@ import type { ChromaDBClient } from "../../clients/chromadb.js";
 import { registerTools } from "../index.js";
 import { registerParserTool } from "../parse-code.js";
 import { registerAugmentTool } from "../augment.js";
-import {
-  registerProcessFlowsTool,
-  registerResources,
-} from "../resources.js";
+import { registerProcessFlowsTool, registerResources } from "../resources.js";
 import { registerScanRisksTool } from "../scan-risks.js";
 
 export async function registerLegacyTools(
