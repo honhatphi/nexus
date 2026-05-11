@@ -1,0 +1,97 @@
+// ─────────────────────────────────────────────────────────────
+// ContextSectionRenderer — reads file snippets and builds
+// ContextSection objects for a context pack.
+// Behaviour preserved from ContextPackBuilder v1:
+//   - max 80 lines per file
+//   - budget-gated (remaining chars)
+//   - NEXUS_WORKSPACE_ROOT env fallback for relative paths
+// ─────────────────────────────────────────────────────────────
+
+import fs from "node:fs/promises";
+import path from "node:path";
+import type { ContextManifestItem, ContextSection } from "../contracts/context-pack.js";
+
+const CHARS_PER_TOKEN = 4;
+const MAX_SNIPPET_LINES = 80;
+
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / CHARS_PER_TOKEN);
+}
+
+export class ContextSectionRenderer {
+  /**
+   * Attempt to read up to `maxLines` lines from a file.
+   * Tries the path as-is first; if relative and NEXUS_WORKSPACE_ROOT is set,
+   * also tries joining them.
+   */
+  async readFileSnippet(
+    filePath: string,
+    maxLines: number,
+    budgetChars: number,
+  ): Promise<string | null> {
+    const candidates: string[] = [filePath];
+    const wsRoot = process.env.NEXUS_WORKSPACE_ROOT;
+    if (wsRoot && !filePath.startsWith("/")) {
+      candidates.push(path.join(wsRoot, filePath));
+    }
+    for (const p of candidates) {
+      try {
+        const content = await fs.readFile(p, "utf8");
+        const lines = content.split("\n");
+        let result = "";
+        for (const line of lines.slice(0, maxLines)) {
+          const next = result + line + "\n";
+          if (next.length > budgetChars) break;
+          result = next;
+        }
+        return result || null;
+      } catch {
+        // try next candidate
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Build snippet sections for all eligible manifest items,
+   * respecting the remaining token budget.
+   *
+   * Returns the new sections and the number of tokens consumed.
+   */
+  async buildSnippetSections(
+    manifest: ContextManifestItem[],
+    budgetTokens: number,
+  ): Promise<{ sections: ContextSection[]; tokensUsed: number }> {
+    const sections: ContextSection[] = [];
+    let tokensUsed = 0;
+
+    for (const item of manifest) {
+      if (tokensUsed >= budgetTokens) break;
+      if (item.type !== "file_capsule" && item.type !== "symbol_context") continue;
+      if (!item.source || item.source.startsWith("http")) continue;
+
+      const remainingChars = (budgetTokens - tokensUsed) * CHARS_PER_TOKEN;
+      const snippet = await this.readFileSnippet(
+        item.source,
+        MAX_SNIPPET_LINES,
+        remainingChars,
+      );
+      if (!snippet) continue;
+
+      const tokenCount = estimateTokens(snippet);
+      if (tokensUsed + tokenCount > budgetTokens) break;
+
+      sections.push({
+        id: `snippet:${item.id}`,
+        title: `File: ${item.source}`,
+        content: snippet,
+        estimatedTokens: tokenCount,
+      });
+      // Update manifest item to reflect actual content size
+      item.estimatedTokens = tokenCount;
+      tokensUsed += tokenCount;
+    }
+
+    return { sections, tokensUsed };
+  }
+}

@@ -3,8 +3,6 @@
 // Strategy: Hybrid search KB → score → trim to budget → pack.
 // ─────────────────────────────────────────────────────────────
 
-import fs from "node:fs/promises";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { GraphStore } from "../ports/graph-store.js";
 import type { Retriever } from "../ports/retriever.js";
@@ -18,10 +16,11 @@ import type {
 } from "../contracts/context-pack.js";
 import type { TokenBudget } from "../contracts/token-budget.js";
 import {
-  nexusWorkspaceDir,
   defaultMaxInputTokens,
   defaultReservedTokens,
 } from "../env.js";
+import { ContextPackStore } from "./context-pack-store.js";
+import { ContextSectionRenderer } from "./context-section-renderer.js";
 
 const CHARS_PER_TOKEN = 4;
 const DEFAULT_MAX_FILES = 8;
@@ -37,6 +36,9 @@ function estimateTokens(text: string): number {
 }
 
 export class ContextPackBuilder {
+  private readonly store = new ContextPackStore();
+  private readonly renderer = new ContextSectionRenderer();
+
   constructor(
     private readonly graph: GraphStore,
     private readonly retriever: Retriever,
@@ -93,38 +95,10 @@ export class ContextPackBuilder {
     }
 
     // ── Phase 3: Enrich file_capsule items with actual content ─
-    // Try to read the first MAX_SNIPPET_LINES lines of each file to
-    // give the agent real code to read without extra tool calls.
-    const MAX_SNIPPET_LINES = 80;
-    const sections: ContextSection[] = [];
-    for (const item of manifest) {
-      if (usedTokens >= budget.maxInputTokens) break;
-      if (item.type !== "file_capsule" && item.type !== "symbol_context")
-        continue;
-      if (!item.source || item.source.startsWith("http")) continue;
-
-      const remainingChars =
-        (budget.maxInputTokens - usedTokens) * CHARS_PER_TOKEN;
-      const snippet = await this.readFileSnippet(
-        item.source,
-        MAX_SNIPPET_LINES,
-        remainingChars,
-      );
-      if (!snippet) continue;
-
-      const tokenCount = estimateTokens(snippet);
-      if (usedTokens + tokenCount > budget.maxInputTokens) break;
-
-      sections.push({
-        id: `snippet:${item.id}`,
-        title: `File: ${item.source}`,
-        content: snippet,
-        estimatedTokens: tokenCount,
-      });
-      // Update manifest item to reflect real content size
-      item.estimatedTokens = tokenCount;
-      usedTokens += tokenCount;
-    }
+    // Delegate to ContextSectionRenderer.
+    const { sections, tokensUsed: snippetTokens } =
+      await this.renderer.buildSnippetSections(manifest, budget.maxInputTokens - usedTokens);
+    usedTokens += snippetTokens;
 
     // ── Phase 4: Add task ledger section if taskId given ─────
 
@@ -197,22 +171,7 @@ export class ContextPackBuilder {
 
     // ── Phase 6: Persist context pack locally ────────────────
     const packId = `ctxpack_${randomUUID().slice(0, 8)}`;
-    await this.persist(input.workspaceId, packId, {
-      id: packId,
-      workspaceId: input.workspaceId,
-      taskId: input.taskId,
-      task: input.task,
-      mode,
-      budget,
-      estimatedTokens: usedTokens,
-      manifest,
-      sections,
-      artifacts: [],
-      instructions: INSTRUCTIONS,
-      createdAt: new Date().toISOString(),
-    });
-
-    return {
+    const pack: ContextPack = {
       id: packId,
       workspaceId: input.workspaceId,
       taskId: input.taskId,
@@ -226,37 +185,9 @@ export class ContextPackBuilder {
       instructions: INSTRUCTIONS,
       createdAt: new Date().toISOString(),
     };
-  }
+    await this.store.save(input.workspaceId, pack);
 
-  // ── Helpers ──────────────────────────────────────────────────
-
-  private async readFileSnippet(
-    filePath: string,
-    maxLines: number,
-    budgetChars: number,
-  ): Promise<string | null> {
-    // Candidate paths: absolute path first, then NEXUS_WORKSPACE_ROOT relative
-    const candidates: string[] = [filePath];
-    const wsRoot = process.env.NEXUS_WORKSPACE_ROOT;
-    if (wsRoot && !filePath.startsWith("/")) {
-      candidates.push(path.join(wsRoot, filePath));
-    }
-    for (const p of candidates) {
-      try {
-        const content = await fs.readFile(p, "utf8");
-        const lines = content.split("\n");
-        let result = "";
-        for (const line of lines.slice(0, maxLines)) {
-          const next = result + line + "\n";
-          if (next.length > budgetChars) break;
-          result = next;
-        }
-        return result || null;
-      } catch {
-        // try next candidate
-      }
-    }
-    return null;
+    return pack;
   }
 
   private async buildRepoCapsule(workspaceId: string): Promise<string | null> {
@@ -281,23 +212,6 @@ export class ContextPackBuilder {
       return lines.join("\n");
     } catch {
       return null;
-    }
-  }
-
-  private async persist(
-    workspaceId: string,
-    packId: string,
-    pack: ContextPack,
-  ): Promise<void> {
-    try {
-      const dir = path.join(nexusWorkspaceDir(workspaceId), "context-packs");
-      await fs.mkdir(dir, { recursive: true });
-      await fs.writeFile(
-        path.join(dir, `${packId}.json`),
-        JSON.stringify(pack, null, 2),
-      );
-    } catch {
-      // non-critical — persistence failure doesn't block tool response
     }
   }
 }
