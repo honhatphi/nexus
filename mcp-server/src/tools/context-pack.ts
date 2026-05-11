@@ -13,10 +13,9 @@ export function registerContextPackTool(
   builder: ContextPackBuilder,
   defaultBudget: Config["budget"],
 ): void {
-  server.tool(
-    "nexus_build_context_pack",
-    "Build a budget-trimmed context pack for a task. Runs hybrid search against the KB, selects the most relevant files/symbols, pulls the active task ledger (if taskId provided), and returns a structured pack with a manifest and instructions. Use this as the FIRST tool call for any coding or debugging task.",
-    {
+  server.registerTool("nexus_build_context_pack", {
+    description: "Build a budget-trimmed context pack for a task. Runs hybrid search against the KB, selects the most relevant files/symbols, pulls the active task ledger (if taskId provided), and returns a structured pack with a manifest and instructions. Use this as the FIRST tool call for any coding or debugging task.",
+    inputSchema: {
       workspace_id: z
         .string()
         .describe("Workspace or service ID being worked on."),
@@ -44,7 +43,7 @@ export function registerContextPackTool(
         .optional()
         .describe("Maximum number of files/symbols to include (default: 8)."),
     },
-    async ({
+  }, async ({
       workspace_id,
       task,
       mode,
@@ -93,6 +92,5 @@ export function registerContextPackTool(
           isError: true,
         };
       }
-    },
-  );
+    });
 }

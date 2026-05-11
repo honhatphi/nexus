@@ -69,10 +69,9 @@ export function registerSyncTool(
     .register(processTracingPhase)
     .register(typeResolutionPhase);
 
-  server.tool(
-    "sync_service_knowledge",
-    "Scan all source files in a service directory, extract functions/calls/types using tree-sitter, and upsert the knowledge into the shared Memgraph graph and ChromaDB vector store. Returns a summary report with per-phase details.",
-    {
+  server.registerTool("sync_service_knowledge", {
+    description: "Scan all source files in a service directory, extract functions/calls/types using tree-sitter, and upsert the knowledge into the shared Memgraph graph and ChromaDB vector store. Returns a summary report with per-phase details.",
+    inputSchema: {
       service_path: z
         .string()
         .describe(
@@ -85,7 +84,7 @@ export function registerSyncTool(
           "If true, re-process all files regardless of whether they changed. If false, skip unchanged files.",
         ),
     },
-    async ({ service_path, force_update }) => {
+  }, async ({ service_path, force_update }) => {
       try {
         const absPath = path.resolve(service_path);
         const serviceName = path.basename(absPath);
@@ -136,6 +135,5 @@ export function registerSyncTool(
           isError: true,
         };
       }
-    },
-  );
+    });
 }

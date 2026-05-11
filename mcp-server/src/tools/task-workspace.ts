@@ -22,14 +22,15 @@ export function registerTaskWorkspaceTools(
   config: Config,
 ): void {
   // ── nexus_spawn_task_workspace ─────────────────────────────
-  server.tool(
+  server.registerTool(
     "nexus_spawn_task_workspace",
-    [
-      "Create an isolated task workspace for a task.",
-      "Selected files are symlinked from the real repo.",
-      "Codex should cd into the returned workspaceDir and work only with selected-files/.",
-    ].join(" "),
     {
+      description: [
+        "Create an isolated task workspace for a task.",
+        "Selected files are symlinked from the real repo.",
+        "Codex should cd into the returned workspaceDir and work only with selected-files/.",
+      ].join(" "),
+      inputSchema: {
       task_id: z
         .string()
         .describe("Unique task identifier (e.g. from nexus_open_task)."),
@@ -56,6 +57,7 @@ export function registerTaskWorkspaceTools(
         .describe(
           "Explicit relative file paths to include in the workspace. If omitted, derived from context pack manifest.",
         ),
+      },
     },
     async ({
       task_id,
@@ -146,11 +148,13 @@ export function registerTaskWorkspaceTools(
   );
 
   // ── nexus_get_task_workspace ───────────────────────────────
-  server.tool(
+  server.registerTool(
     "nexus_get_task_workspace",
-    "Get info about an existing task workspace (selected files, paths, created at).",
     {
-      task_id: z.string().describe("Task identifier."),
+      description: "Get info about an existing task workspace (selected files, paths, created at).",
+      inputSchema: {
+        task_id: z.string().describe("Task identifier."),
+      },
     },
     async ({ task_id }) => {
       try {
@@ -188,20 +192,22 @@ export function registerTaskWorkspaceTools(
   );
 
   // ── nexus_apply_task_patch ─────────────────────────────────
-  server.tool(
+  server.registerTool(
     "nexus_apply_task_patch",
-    [
-      "Generate a unified diff of all changes made inside a task workspace",
-      "and return it. The caller is responsible for applying the patch or",
-      "copying files to the real repo.",
-      "By default returns a summary; set include_full_diff=true for the raw unified diff.",
-    ].join(" "),
     {
-      task_id: z.string().describe("Task identifier."),
-      include_full_diff: z
-        .boolean()
-        .optional()
-        .describe("Include the full unified diff text (default: false)."),
+      description: [
+        "Generate a unified diff of all changes made inside a task workspace",
+        "and return it. The caller is responsible for applying the patch or",
+        "copying files to the real repo.",
+        "By default returns a summary; set include_full_diff=true for the raw unified diff.",
+      ].join(" "),
+      inputSchema: {
+        task_id: z.string().describe("Task identifier."),
+        include_full_diff: z
+          .boolean()
+          .optional()
+          .describe("Include the full unified diff text (default: false)."),
+      },
     },
     async ({ task_id, include_full_diff = false }) => {
       try {

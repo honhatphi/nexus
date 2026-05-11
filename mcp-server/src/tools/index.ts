@@ -92,17 +92,16 @@ export function registerTools(
   chromadb: ChromaDBClient,
 ): void {
   // ── 1. query_graph ─────────────────────────────────────────
-  server.tool(
-    "query_graph",
-    "Execute a read-only Cypher query against the Memgraph knowledge graph to explore relationships between functions, modules, and files.",
-    {
+  server.registerTool("query_graph", {
+    description: "Execute a read-only Cypher query against the Memgraph knowledge graph to explore relationships between functions, modules, and files.",
+    inputSchema: {
       cypher: z.string().describe("A Cypher READ query (MATCH … RETURN …)."),
       params: z
         .record(z.unknown())
         .optional()
         .describe("Optional parameter map for the Cypher query."),
     },
-    async ({ cypher, params }) => {
+  }, async ({ cypher, params }) => {
       // Safety: block mutations
       const upper = cypher.toUpperCase();
       const mutationKeywords = [
@@ -158,14 +157,12 @@ export function registerTools(
           isError: true,
         };
       }
-    },
-  );
+    });
 
   // ── 2. search_knowledge_base ───────────────────────────────
-  server.tool(
-    "search_knowledge_base",
-    "Search the Nexus Knowledge Base. Supports three modes: 'semantic' (ChromaDB vectors), 'keyword' (Memgraph text match), or 'hybrid' (both fused via Reciprocal Rank Fusion). Default is hybrid.",
-    {
+  server.registerTool("search_knowledge_base", {
+    description: "Search the Nexus Knowledge Base. Supports three modes: 'semantic' (ChromaDB vectors), 'keyword' (Memgraph text match), or 'hybrid' (both fused via Reciprocal Rank Fusion). Default is hybrid.",
+    inputSchema: {
       query: z
         .string()
         .describe("Natural-language or code snippet to search for."),
@@ -183,7 +180,7 @@ export function registerTools(
           "Search mode: 'hybrid' (BM25+semantic fused via RRF), 'semantic' (vector only), 'keyword' (graph text only). Default: hybrid.",
         ),
     },
-    async ({ query, topK, mode }) => {
+  }, async ({ query, topK, mode }) => {
       try {
         const results = await hybridSearch(
           memgraph,
@@ -253,14 +250,12 @@ export function registerTools(
           isError: true,
         };
       }
-    },
-  );
+    });
 
   // ── 3. get_impact_analysis ─────────────────────────────────
-  server.tool(
-    "get_impact_analysis",
-    "Analyze the dependency graph for a given function or file. Returns all direct and transitive dependents so you can assess the blast radius before editing code. Supports confidence-based filtering.",
-    {
+  server.registerTool("get_impact_analysis", {
+    description: "Analyze the dependency graph for a given function or file. Returns all direct and transitive dependents so you can assess the blast radius before editing code. Supports confidence-based filtering.",
+    inputSchema: {
       name: z.string().describe("Function name or file path to analyze."),
       maxDepth: z
         .number()
@@ -280,7 +275,7 @@ export function registerTools(
           "Minimum relationship confidence threshold (0.0–1.0). Higher = fewer but more reliable results.",
         ),
     },
-    async ({ name, maxDepth, min_confidence }) => {
+  }, async ({ name, maxDepth, min_confidence }) => {
       try {
         const deps = await memgraph.getImpact(name, maxDepth, min_confidence);
         const related = await chromadb.search(name, 3);
@@ -315,15 +310,13 @@ export function registerTools(
           isError: true,
         };
       }
-    },
-  );
+    });
 
   // ── 4. check_staleness ─────────────────────────────────────
-  server.tool(
-    "check_staleness",
-    "Check if the Knowledge Base is up-to-date with the latest code changes. Compares the last sync commit against git HEAD for each service. Call this after committing, merging, or pulling code to see if a re-sync is needed.",
-    {},
-    async () => {
+  server.registerTool("check_staleness", {
+    description: "Check if the Knowledge Base is up-to-date with the latest code changes. Compares the last sync commit against git HEAD for each service. Call this after committing, merging, or pulling code to see if a re-sync is needed.",
+    inputSchema: {},
+  }, async () => {
       try {
         const staleness = await checkAllStaleness(memgraph);
 
@@ -392,14 +385,12 @@ export function registerTools(
           isError: true,
         };
       }
-    },
-  );
+    });
 
   // ── 5. query_log ──────────────────────────────────────────
-  server.tool(
-    "query_log",
-    "Analytics over the KB query log (Learning Layer). Returns usage patterns from QueryEvent nodes: top queried terms, low-score gaps (KB holes), and recent activity. Use this to understand what agents are searching for and where the KB is lacking.",
-    {
+  server.registerTool("query_log", {
+    description: "Analytics over the KB query log (Learning Layer). Returns usage patterns from QueryEvent nodes: top queried terms, low-score gaps (KB holes), and recent activity. Use this to understand what agents are searching for and where the KB is lacking.",
+    inputSchema: {
       kind: z
         .enum(["top_queries", "gap_queries", "recent", "hot_chunks"])
         .default("top_queries")
@@ -421,7 +412,7 @@ export function registerTools(
         .default(7)
         .describe("Look back window in days (default 7)."),
     },
-    async ({ kind, limit, since_days }) => {
+  }, async ({ kind, limit, since_days }) => {
       try {
         const sinceMs = Date.now() - since_days * 24 * 60 * 60 * 1000;
         const limitInt = Math.trunc(limit); // Memgraph requires literal integer in LIMIT
@@ -523,6 +514,5 @@ export function registerTools(
           isError: true,
         };
       }
-    },
-  );
+    });
 }

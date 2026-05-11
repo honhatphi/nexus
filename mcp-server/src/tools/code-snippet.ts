@@ -40,10 +40,9 @@ export function registerCodeSnippetTool(
   server: McpServer,
   defaultWorkspaceId: string,
 ): void {
-  server.tool(
-    "nexus_get_code_snippet",
-    "Read a line-range excerpt from a file that is listed in the context pack manifest. Always provide contextPackId and sourceId — this enforces the manifest guard and prevents unbounded file reads. Token-capped at maxTokens (default 1500).",
-    {
+  server.registerTool("nexus_get_code_snippet", {
+    description: "Read a line-range excerpt from a file that is listed in the context pack manifest. Always provide contextPackId and sourceId — this enforces the manifest guard and prevents unbounded file reads. Token-capped at maxTokens (default 1500).",
+    inputSchema: {
       workspace_id: z
         .string()
         .optional()
@@ -77,7 +76,7 @@ export function registerCodeSnippetTool(
         .optional()
         .describe("Token cap for the excerpt (default: 1500)."),
     },
-    async ({
+  }, async ({
       workspace_id,
       context_pack_id,
       source_id,
@@ -198,6 +197,5 @@ export function registerCodeSnippetTool(
           isError: true,
         };
       }
-    },
-  );
+    });
 }

@@ -212,10 +212,9 @@ export function registerScanRisksTool(
   server: McpServer,
   memgraph: MemgraphClient,
 ): void {
-  server.tool(
-    "scan_risks",
-    "On-demand risk assessment from the Knowledge Base. Reads directly from Memgraph — no re-sync needed. Returns structured risk items by severity.",
-    {
+  server.registerTool("scan_risks", {
+    description: "On-demand risk assessment from the Knowledge Base. Reads directly from Memgraph — no re-sync needed. Returns structured risk items by severity.",
+    inputSchema: {
       service: z
         .string()
         .describe("Service name to scan (e.g. 'warehouse-2.0')."),
@@ -232,7 +231,7 @@ export function registerScanRisksTool(
           "Minimum risk score to include in results (0.0–1.0). Default: 0.5.",
         ),
     },
-    async ({ service, riskTypes, threshold }) => {
+  }, async ({ service, riskTypes, threshold }) => {
       try {
         const allRisks: RiskItem[] = [];
 
@@ -312,6 +311,5 @@ export function registerScanRisksTool(
           isError: true,
         };
       }
-    },
-  );
+    });
 }
