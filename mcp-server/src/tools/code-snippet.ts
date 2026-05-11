@@ -12,6 +12,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { ContextPack } from "@nexus-hub/core";
 import { nexusWorkspaceDir } from "@nexus-hub/core";
+import { mcpJson, mcpError } from "../utils/mcp-response.js";
 
 const CHARS_PER_TOKEN = 4;
 
@@ -100,17 +101,7 @@ export function registerCodeSnippetTool(
       // ── Manifest guard ──────────────────────────────────────
       const pack = await loadContextPack(resolvedWorkspace, context_pack_id);
       if (!pack) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                error: `Context pack "${context_pack_id}" not found.`,
-              }),
-            },
-          ],
-          isError: true,
-        };
+        return mcpError(`Context pack "${context_pack_id}" not found.`);
       }
 
       const inManifest = pack.manifest.some(
@@ -122,19 +113,13 @@ export function registerCodeSnippetTool(
 
       if (!inManifest) {
         const manifestSources = pack.manifest.map((m) => m.source);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                error: `"${source_id}" is not in the context pack manifest.`,
-                hint: "Call nexus_build_context_pack first, or check the manifest for valid sourceIds.",
-                manifestSources,
-              }),
-            },
-          ],
-          isError: true,
-        };
+        return mcpError(
+          `"${source_id}" is not in the context pack manifest.`,
+          {
+            hint: "Call nexus_build_context_pack first, or check the manifest for valid sourceIds.",
+            manifestSources,
+          },
+        );
       }
 
       // ── Resolve file path from manifest item ───────────────
@@ -174,38 +159,17 @@ export function registerCodeSnippetTool(
 
         const truncated = result.length < slice.join("\n").length;
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  source: actualSource,
-                  ...(debug ? { resolvedPath } : {}),
-                  startLine: start_line,
-                  endLine: effectiveEnd,
-                  estimatedTokens: estimateTokens(result),
-                  truncated,
-                  content: result,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return mcpJson({
+          source: actualSource,
+          ...(debug ? { resolvedPath } : {}),
+          startLine: start_line,
+          endLine: effectiveEnd,
+          estimatedTokens: estimateTokens(result),
+          truncated,
+          content: result,
+        });
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                error: `Cannot read "${source_id}": ${String(err)}`,
-              }),
-            },
-          ],
-          isError: true,
-        };
+        return mcpError(err, { source: source_id });
       }
     },
   );

@@ -9,6 +9,12 @@ import { z } from "zod";
 import path from "node:path";
 import type { CodeIndexer } from "@nexus-hub/core";
 import { WorkspaceResolver, RepoDetector } from "@nexus-hub/core";
+import { mcpJson, mcpError } from "../utils/mcp-response.js";
+import {
+  workspaceStatusView,
+  resolveWorkspaceView,
+  syncCurrentRepoView,
+} from "../utils/safe-response.js";
 
 export function registerWorkspaceTools(
   server: McpServer,
@@ -42,18 +48,11 @@ export function registerWorkspaceTools(
         const found = await WorkspaceResolver.findWorkspaceRoot(startDir);
 
         if (!found) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error:
-                    "No .nexus/workspace.yaml found. Run nexus_resolve_workspace to initialise.",
-                  hint: `Searched from: ${startDir}. Set NEXUS_WORKSPACE_ROOT to the workspace root.`,
-                }),
-              },
-            ],
-          };
+          return mcpJson({
+            error:
+              "No .nexus/workspace.yaml found. Run nexus_resolve_workspace to initialise.",
+            hint: `Searched from: ${startDir}. Set NEXUS_WORKSPACE_ROOT to the workspace root.`,
+          });
         }
 
         const manifest = await WorkspaceResolver.readManifest(
@@ -91,33 +90,17 @@ export function registerWorkspaceTools(
           };
         }
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  workspaceId: manifest.workspaceId,
-                  ...(debug ? { workspaceRoot: found.root } : {}),
-                  currentRepo,
-                  repos,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return mcpJson(
+          workspaceStatusView(
+            manifest.workspaceId,
+            found.root,
+            currentRepo,
+            repos,
+            debug,
+          ),
+        );
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: String(err) }),
-            },
-          ],
-          isError: true,
-        };
+        return mcpError(err);
       }
     },
   );
@@ -162,54 +145,23 @@ export function registerWorkspaceTools(
         }
 
         if (!found) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error:
-                    "No workspace found. Provide workspace_id to initialise one.",
-                }),
-              },
-            ],
-            isError: true,
-          };
+          return mcpError("No workspace found. Provide workspace_id to initialise one.");
         }
 
         const manifest = await WorkspaceResolver.readManifest(
           found.manifestPath,
         );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  workspaceId: manifest.workspaceId,
-                  reposRegistered: manifest.repos.length,
-                  ...(debug
-                    ? {
-                        workspaceRoot: found.root,
-                        manifestPath: found.manifestPath,
-                      }
-                    : {}),
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return mcpJson(
+          resolveWorkspaceView(
+            manifest.workspaceId,
+            manifest.repos.length,
+            found.root,
+            found.manifestPath,
+            debug,
+          ),
+        );
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: String(err) }),
-            },
-          ],
-          isError: true,
-        };
+        return mcpError(err);
       }
     },
   );
@@ -259,18 +211,9 @@ export function registerWorkspaceTools(
         const detected = await RepoDetector.detect(startDir);
 
         if (!detected) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error:
-                    "Could not detect a Git repo. Is git installed and is this a git repository?",
-                }),
-              },
-            ],
-            isError: true,
-          };
+          return mcpError(
+            "Could not detect a Git repo. Is git installed and is this a git repository?",
+          );
         }
 
         let addedToManifest = false;
@@ -323,37 +266,19 @@ export function registerWorkspaceTools(
           forceUpdate: force_update,
         });
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  repo: {
-                    repoId: detected.repoId,
-                    ...(debug ? { repoRoot: detected.repoRoot } : {}),
-                    branch: detected.branch,
-                    commit: detected.commit,
-                    addedToManifest,
-                  },
-                  sync: syncResult,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return mcpJson(
+          syncCurrentRepoView(
+            detected.repoId,
+            detected.repoRoot,
+            detected.branch,
+            detected.commit,
+            addedToManifest,
+            syncResult,
+            debug,
+          ),
+        );
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: String(err) }),
-            },
-          ],
-          isError: true,
-        };
+        return mcpError(err);
       }
     },
   );

@@ -15,6 +15,11 @@ import {
   nexusWorkspaceDir,
 } from "@nexus-hub/core";
 import type { Config } from "../config.js";
+import { mcpJson, mcpError } from "../utils/mcp-response.js";
+import {
+  spawnTaskWorkspaceView,
+  taskWorkspaceView,
+} from "../utils/safe-response.js";
 
 export function registerTaskWorkspaceTools(
   server: McpServer,
@@ -79,17 +84,7 @@ export function registerTaskWorkspaceTools(
           cwd ?? process.env.NEXUS_WORKSPACE_ROOT ?? process.cwd();
         const detected = await RepoDetector.detect(startDir);
         if (!detected) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error: "Could not detect a Git repo at cwd.",
-                }),
-              },
-            ],
-            isError: true,
-          };
+          return mcpError("Could not detect a Git repo at cwd.");
         }
 
         // Load or build context pack
@@ -122,41 +117,9 @@ export function registerTaskWorkspaceTools(
           selectedFiles: selected_files,
         });
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  taskId: task_id,
-                  selectedFiles: info.selectedFiles,
-                  createdAt: info.createdAt,
-                  hint: `Task workspace ready. Use taskId '${task_id}' with nexus_get_task_workspace or nexus_apply_task_patch.`,
-                  ...(debug
-                    ? {
-                        localWorkspaceDir: info.workspaceDir,
-                        agentsMd: info.agentsMdPath,
-                        contextPackMd: info.contextPackMdPath,
-                        cdHint: `cd "${info.workspaceDir}" && codex`,
-                      }
-                    : {}),
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return mcpJson(spawnTaskWorkspaceView(task_id, info, debug));
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: String(err) }),
-            },
-          ],
-          isError: true,
-        };
+        return mcpError(err);
       }
     },
   );
@@ -181,48 +144,11 @@ export function registerTaskWorkspaceTools(
       try {
         const info = await TaskWorkspaceManager.getInfo(task_id);
         if (!info) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error: `No workspace found for task '${task_id}'.`,
-                }),
-              },
-            ],
-            isError: true,
-          };
+          return mcpError(`No workspace found for task '${task_id}'.`);
         }
-        const response = {
-          taskId: info.taskId,
-          selectedFiles: info.selectedFiles,
-          createdAt: info.createdAt,
-          hint: `Use nexus_apply_task_patch with taskId '${info.taskId}' to inspect changes.`,
-          ...(debug
-            ? {
-                localWorkspaceDir: info.workspaceDir,
-                repoRoot: info.repoRoot,
-                agentsMd: info.agentsMdPath,
-                contextPackMd: info.contextPackMdPath,
-                cdHint: `cd "${info.workspaceDir}" && codex`,
-              }
-            : {}),
-        };
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify(response, null, 2) },
-          ],
-        };
+        return mcpJson(taskWorkspaceView(info, debug));
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: String(err) }),
-            },
-          ],
-          isError: true,
-        };
+        return mcpError(err);
       }
     },
   );
@@ -249,17 +175,7 @@ export function registerTaskWorkspaceTools(
       try {
         const info = await TaskWorkspaceManager.getInfo(task_id);
         if (!info) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error: `No workspace found for task '${task_id}'.`,
-                }),
-              },
-            ],
-            isError: true,
-          };
+          return mcpError(`No workspace found for task '${task_id}'.`);
         }
 
         const generated = await PatchGenerator.generate(info);
@@ -277,21 +193,9 @@ export function registerTaskWorkspaceTools(
           ...(include_full_diff ? { unifiedDiff: generated.unifiedDiff } : {}),
         };
 
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify(summary, null, 2) },
-          ],
-        };
+        return mcpJson(summary);
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: String(err) }),
-            },
-          ],
-          isError: true,
-        };
+        return mcpError(err);
       }
     },
   );

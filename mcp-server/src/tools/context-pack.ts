@@ -8,6 +8,7 @@ import { z } from "zod";
 import type { ContextPackBuilder } from "@nexus-hub/core";
 import { WorkspaceResolver, defaultWorkspaceId } from "@nexus-hub/core";
 import type { Config } from "../config.js";
+import { mcpError, mcpText } from "../utils/mcp-response.js";
 
 export function registerContextPackTool(
   server: McpServer,
@@ -115,19 +116,9 @@ export function registerContextPackTool(
               `\n... [truncated — ${Math.ceil(finalOut.length / CHARS_PER_TOKEN)} estimated tokens total. Use nexus_get_code_snippet for file content.]`
             : finalOut;
 
-        return {
-          content: [{ type: "text" as const, text }],
-        };
+        return mcpText(text);
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: String(err) }),
-            },
-          ],
-          isError: true,
-        };
+        return mcpError(err);
       }
     },
   );
