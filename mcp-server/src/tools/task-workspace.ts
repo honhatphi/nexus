@@ -75,7 +75,7 @@ export function registerTaskWorkspaceTools(
       debug = false,
     }) => {
       try {
-        const startDir = cwd ?? process.cwd();
+        const startDir = cwd ?? process.env.NEXUS_WORKSPACE_ROOT ?? process.cwd();
         const detected = await RepoDetector.detect(startDir);
         if (!detected) {
           return {
@@ -168,9 +168,15 @@ export function registerTaskWorkspaceTools(
         "Get info about an existing task workspace (selected files, paths, created at).",
       inputSchema: {
         task_id: z.string().describe("Task identifier."),
+        debug: z
+          .boolean()
+          .optional()
+          .describe(
+            "When true, includes absolute local paths (workspaceDir, repoRoot, agentsMd, contextPackMd) in the response.",
+          ),
       },
     },
-    async ({ task_id }) => {
+    async ({ task_id, debug = false }) => {
       try {
         const info = await TaskWorkspaceManager.getInfo(task_id);
         if (!info) {
@@ -186,9 +192,24 @@ export function registerTaskWorkspaceTools(
             isError: true,
           };
         }
+        const response = {
+          taskId: info.taskId,
+          selectedFiles: info.selectedFiles,
+          createdAt: info.createdAt,
+          hint: `Use nexus_apply_task_patch with taskId '${info.taskId}' to inspect changes.`,
+          ...(debug
+            ? {
+                localWorkspaceDir: info.workspaceDir,
+                repoRoot: info.repoRoot,
+                agentsMd: info.agentsMdPath,
+                contextPackMd: info.contextPackMdPath,
+                cdHint: `cd "${info.workspaceDir}" && codex`,
+              }
+            : {}),
+        };
         return {
           content: [
-            { type: "text" as const, text: JSON.stringify(info, null, 2) },
+            { type: "text" as const, text: JSON.stringify(response, null, 2) },
           ],
         };
       } catch (err) {
