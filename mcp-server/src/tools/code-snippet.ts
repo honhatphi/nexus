@@ -13,6 +13,7 @@ import path from "node:path";
 import type { ContextPack } from "@nexus-hub/core";
 import { nexusWorkspaceDir } from "@nexus-hub/core";
 import { mcpJson, mcpError } from "../utils/mcp-response.js";
+import { resolveStartDir } from "../utils/workspace-context.js";
 
 const CHARS_PER_TOKEN = 4;
 
@@ -113,13 +114,10 @@ export function registerCodeSnippetTool(
 
       if (!inManifest) {
         const manifestSources = pack.manifest.map((m) => m.source);
-        return mcpError(
-          `"${source_id}" is not in the context pack manifest.`,
-          {
-            hint: "Call nexus_build_context_pack first, or check the manifest for valid sourceIds.",
-            manifestSources,
-          },
-        );
+        return mcpError(`"${source_id}" is not in the context pack manifest.`, {
+          hint: "Call nexus_build_context_pack first, or check the manifest for valid sourceIds.",
+          manifestSources,
+        });
       }
 
       // ── Resolve file path from manifest item ───────────────
@@ -134,8 +132,7 @@ export function registerCodeSnippetTool(
       const actualSource = manifestItem?.source ?? source_id;
 
       // Resolve relative paths against file_root → NEXUS_WORKSPACE_ROOT → cwd
-      const resolvedRoot =
-        file_root ?? process.env.NEXUS_WORKSPACE_ROOT ?? process.cwd();
+      const resolvedRoot = resolveStartDir(file_root);
       const resolvedPath = path.isAbsolute(actualSource)
         ? actualSource
         : path.resolve(resolvedRoot, actualSource);

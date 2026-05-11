@@ -10,6 +10,7 @@ import path from "node:path";
 import type { CodeIndexer } from "@nexus-hub/core";
 import { WorkspaceResolver, RepoDetector } from "@nexus-hub/core";
 import { mcpJson, mcpError } from "../utils/mcp-response.js";
+import { resolveStartDir } from "../utils/workspace-context.js";
 import {
   workspaceStatusView,
   resolveWorkspaceView,
@@ -43,8 +44,7 @@ export function registerWorkspaceTools(
     },
     async ({ cwd, debug = false }) => {
       try {
-        const startDir =
-          cwd ?? process.env.NEXUS_WORKSPACE_ROOT ?? process.cwd();
+        const startDir = resolveStartDir(cwd);
         const found = await WorkspaceResolver.findWorkspaceRoot(startDir);
 
         if (!found) {
@@ -134,8 +134,7 @@ export function registerWorkspaceTools(
     },
     async ({ cwd, workspace_id, debug = false }) => {
       try {
-        const startDir =
-          cwd ?? process.env.NEXUS_WORKSPACE_ROOT ?? process.cwd();
+        const startDir = resolveStartDir(cwd);
         let found = await WorkspaceResolver.findWorkspaceRoot(startDir);
 
         if (!found && workspace_id) {
@@ -145,7 +144,9 @@ export function registerWorkspaceTools(
         }
 
         if (!found) {
-          return mcpError("No workspace found. Provide workspace_id to initialise one.");
+          return mcpError(
+            "No workspace found. Provide workspace_id to initialise one.",
+          );
         }
 
         const manifest = await WorkspaceResolver.readManifest(
@@ -206,8 +207,7 @@ export function registerWorkspaceTools(
       debug = false,
     }) => {
       try {
-        const startDir =
-          cwd ?? process.env.NEXUS_WORKSPACE_ROOT ?? process.cwd();
+        const startDir = resolveStartDir(cwd);
         const detected = await RepoDetector.detect(startDir);
 
         if (!detected) {

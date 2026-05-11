@@ -6,9 +6,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { ContextPackBuilder } from "@nexus-hub/core";
-import { WorkspaceResolver, defaultWorkspaceId } from "@nexus-hub/core";
 import type { Config } from "../config.js";
 import { mcpError, mcpText } from "../utils/mcp-response.js";
+import { resolveWorkspaceFromInput } from "../utils/workspace-context.js";
 
 export function registerContextPackTool(
   server: McpServer,
@@ -69,23 +69,10 @@ export function registerContextPackTool(
     }) => {
       try {
         // ── Zero-config workspace resolution ──────────────────
-        let resolvedWorkspaceId = workspace_id;
-        let workspaceHint: string | undefined;
-
-        if (!resolvedWorkspaceId) {
-          const startDir =
-            cwd ?? process.env.NEXUS_WORKSPACE_ROOT ?? process.cwd();
-          const found = await WorkspaceResolver.findWorkspaceRoot(startDir);
-          if (found) {
-            const manifest = await WorkspaceResolver.readManifest(
-              found.manifestPath,
-            );
-            resolvedWorkspaceId = manifest.workspaceId;
-          } else {
-            resolvedWorkspaceId = defaultWorkspaceId();
-            workspaceHint = `No .nexus/workspace.yaml found from '${startDir}'. Using fallback workspaceId '${resolvedWorkspaceId}'. Run nexus_resolve_workspace to initialise a workspace manifest.`;
-          }
-        }
+        const {
+          workspaceId: resolvedWorkspaceId,
+          warning: workspaceHint,
+        } = await resolveWorkspaceFromInput({ workspaceId: workspace_id, cwd });
 
         const pack = await builder.build({
           workspaceId: resolvedWorkspaceId,

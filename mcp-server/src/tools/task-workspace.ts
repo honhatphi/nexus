@@ -20,6 +20,7 @@ import {
   spawnTaskWorkspaceView,
   taskWorkspaceView,
 } from "../utils/safe-response.js";
+import { resolveStartDir } from "../utils/workspace-context.js";
 
 export function registerTaskWorkspaceTools(
   server: McpServer,
@@ -80,8 +81,7 @@ export function registerTaskWorkspaceTools(
       debug = false,
     }) => {
       try {
-        const startDir =
-          cwd ?? process.env.NEXUS_WORKSPACE_ROOT ?? process.cwd();
+        const startDir = resolveStartDir(cwd);
         const detected = await RepoDetector.detect(startDir);
         if (!detected) {
           return mcpError("Could not detect a Git repo at cwd.");
