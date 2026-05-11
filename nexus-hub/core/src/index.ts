@@ -89,6 +89,8 @@ export type { StoreResult } from "./artifacts/artifact-service.js";
 export { ContextPackBuilder } from "./context/context-pack-builder.js";
 export { ContextPackStore } from "./context/context-pack-store.js";
 export { ContextSectionRenderer } from "./context/context-section-renderer.js";
+export { SourceResolver } from "./context/source-resolver.js";
+export type { SourceResolverOptions } from "./context/source-resolver.js";
 
 // Persistent index state (PR 9)
 export type {

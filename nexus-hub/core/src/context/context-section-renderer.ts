@@ -8,8 +8,11 @@
 // ─────────────────────────────────────────────────────────────
 
 import fs from "node:fs/promises";
-import path from "node:path";
-import type { ContextManifestItem, ContextSection } from "../contracts/context-pack.js";
+import type {
+  ContextManifestItem,
+  ContextSection,
+} from "../contracts/context-pack.js";
+import { SourceResolver } from "./source-resolver.js";
 
 const CHARS_PER_TOKEN = 4;
 const MAX_SNIPPET_LINES = 80;
@@ -19,21 +22,19 @@ function estimateTokens(text: string): number {
 }
 
 export class ContextSectionRenderer {
+  private readonly resolver = new SourceResolver();
+
   /**
    * Attempt to read up to `maxLines` lines from a file.
-   * Tries the path as-is first; if relative and NEXUS_WORKSPACE_ROOT is set,
-   * also tries joining them.
+   * Candidate paths are resolved via SourceResolver (absolute-first,
+   * then NEXUS_WORKSPACE_ROOT, then cwd).
    */
   async readFileSnippet(
     filePath: string,
     maxLines: number,
     budgetChars: number,
   ): Promise<string | null> {
-    const candidates: string[] = [filePath];
-    const wsRoot = process.env.NEXUS_WORKSPACE_ROOT;
-    if (wsRoot && !filePath.startsWith("/")) {
-      candidates.push(path.join(wsRoot, filePath));
-    }
+    const candidates = this.resolver.resolveCandidates(filePath);
     for (const p of candidates) {
       try {
         const content = await fs.readFile(p, "utf8");
@@ -67,7 +68,8 @@ export class ContextSectionRenderer {
 
     for (const item of manifest) {
       if (tokensUsed >= budgetTokens) break;
-      if (item.type !== "file_capsule" && item.type !== "symbol_context") continue;
+      if (item.type !== "file_capsule" && item.type !== "symbol_context")
+        continue;
       if (!item.source || item.source.startsWith("http")) continue;
 
       const remainingChars = (budgetTokens - tokensUsed) * CHARS_PER_TOKEN;
