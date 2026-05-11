@@ -32,6 +32,23 @@ function warn(label, fn) {
   }
 }
 
+// ── Env-configured endpoints ─────────────────────────────────
+const chromadbUrl = process.env.CHROMADB_URL ?? "http://localhost:18000";
+const memgraphUri = process.env.MEMGRAPH_URI ?? "bolt://localhost:17687";
+const mcpPort = parseInt(process.env.MCP_SERVER_PORT ?? "13100", 10);
+
+function parseHostPort(urlStr, defaultPort) {
+  try {
+    const u = new URL(urlStr);
+    return { host: u.hostname, port: parseInt(u.port, 10) || defaultPort };
+  } catch (e) {
+    throw new Error(`Invalid URL '${urlStr}': ${e.message}`);
+  }
+}
+
+const chromaAddr = parseHostPort(chromadbUrl, 8000);
+const memgraphAddr = parseHostPort(memgraphUri, 7687);
+
 console.log("\nNexus MCP — Doctor\n");
 
 // ── Node.js ──────────────────────────────────────────────────
@@ -50,20 +67,25 @@ check("Docker running", () => {
 
 // ── Infrastructure ───────────────────────────────────────────
 console.log("\nInfrastructure:");
-check("Memgraph reachable (port 17687)", () => {
-  execSync("nc -z localhost 17687", { stdio: "pipe", timeout: 2000 });
+check(`Memgraph reachable (${memgraphUri})`, () => {
+  execSync(`nc -z ${memgraphAddr.host} ${memgraphAddr.port}`, {
+    stdio: "pipe",
+    timeout: 2000,
+  });
   return "ok";
 });
 
-check("ChromaDB reachable (port 8000)", () => {
-  execSync("nc -z localhost 8000", { stdio: "pipe", timeout: 2000 });
+check(`ChromaDB reachable (${chromadbUrl})`, () => {
+  execSync(`nc -z ${chromaAddr.host} ${chromaAddr.port}`, {
+    stdio: "pipe",
+    timeout: 2000,
+  });
   return "ok";
 });
 
 // ── MCP Server ────────────────────────────────────────────────
 console.log("\nMCP Server:");
 
-let mcpPort = 13100;
 check(`MCP server health (http://localhost:${mcpPort}/health)`, () => {
   const raw = execSync(`curl -s http://localhost:${mcpPort}/health`, {
     stdio: "pipe",
@@ -75,8 +97,6 @@ check(`MCP server health (http://localhost:${mcpPort}/health)`, () => {
 });
 
 check("MCP server dist built", () => {
-  const { existsSync } = await import("node:fs").catch(() => require("fs"));
-  // Use sync check
   try {
     execSync("test -f mcp-server/dist/index.js", { stdio: "pipe" });
     return "dist/index.js exists";
@@ -93,7 +113,8 @@ warn("codex CLI available", () => {
   })
     .toString()
     .trim();
-  if (v === "notfound") throw new Error("not installed — npm install -g @openai/codex");
+  if (v === "notfound")
+    throw new Error("not installed — npm install -g @openai/codex");
   return v;
 });
 

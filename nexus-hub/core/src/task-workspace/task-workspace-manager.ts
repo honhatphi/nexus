@@ -2,7 +2,7 @@
 // TaskWorkspaceManager (PR 12)
 // Creates an isolated task workspace under
 // ~/.nexus/tasks/<taskId>/workspace/ with selected files
-// symlinked from the real repo. Codex runs inside and only
+// copied from the real repo. Codex runs inside and only
 // sees what was selected.
 // ─────────────────────────────────────────────────────────────
 
@@ -80,7 +80,7 @@ export class TaskWorkspaceManager {
         .map((m) => m.source)
         .filter((s) => s && !s.startsWith("http"));
 
-    const symlinked: string[] = [];
+    const copiedFiles: string[] = [];
 
     for (const relFile of relFiles) {
       const absSource = path.isAbsolute(relFile)
@@ -104,7 +104,7 @@ export class TaskWorkspaceManager {
       } catch {
         continue;
       }
-      symlinked.push(relFile);
+      copiedFiles.push(relFile);
     }
 
     // Write AGENTS.md
@@ -122,7 +122,7 @@ export class TaskWorkspaceManager {
       taskId: input.taskId,
       workspaceDir: wsDir,
       repoRoot: input.repoRoot,
-      selectedFiles: symlinked,
+      selectedFiles: copiedFiles,
       agentsMdPath,
       contextPackMdPath,
       createdAt: new Date().toISOString(),

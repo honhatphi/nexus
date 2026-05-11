@@ -1,0 +1,40 @@
+{
+  "capturedAt": "2026-05-11T03:22:33.769Z",
+  "commit": "ab04402",
+  "mcp": {
+    "endpoint": "/mcp",
+    "port": 13100,
+    "tools": [
+      "augment",
+      "check_staleness",
+      "detect_changes",
+      "get_impact_analysis",
+      "get_process_flows",
+      "get_symbol_context",
+      "parse_code",
+      "query_graph",
+      "query_log",
+      "scan_risks",
+      "search_knowledge_base",
+      "sync_service_knowledge"
+    ]
+  },
+  "packages": {
+    "mcp-server": "0.1.0",
+    "common-tools": "0.1.0",
+    "core": null,
+    "cli": null
+  },
+  "stores": {
+    "graph": "memgraph",
+    "vector": "chromadb"
+  },
+  "core": {
+    "exists": false,
+    "modules": []
+  },
+  "legacyToolsFlag": "NEXUS_ENABLE_LEGACY_TOOLS",
+  "legacyToolsEnabled": false,
+  "agentsFile": false,
+  "codexConfig": false
+}

@@ -4,17 +4,9 @@ import http from "node:http";
 import { loadConfig } from "./config.js";
 import { MemgraphClient } from "./clients/memgraph.js";
 import { ChromaDBClient } from "./clients/chromadb.js";
-import { registerTools } from "./tools/index.js";
-import { registerParserTool } from "./tools/parse-code.js";
 import { registerSyncTool } from "./tools/sync-service.js";
 import { registerDetectChangesTool } from "./tools/detect-changes.js";
 import { registerContextTool } from "./tools/context.js";
-import { registerAugmentTool } from "./tools/augment.js";
-import {
-  registerProcessFlowsTool,
-  registerResources,
-} from "./tools/resources.js";
-import { registerScanRisksTool } from "./tools/scan-risks.js";
 import { registerLedgerTools } from "./tools/ledger.js";
 import { registerArtifactTools } from "./tools/artifacts.js";
 import { registerContextPackTool } from "./tools/context-pack.js";
@@ -131,12 +123,9 @@ async function main(): Promise<void> {
 
       // ── Legacy tools (opt-in via NEXUS_ENABLE_LEGACY_TOOLS=1) ─
       if (config.enableLegacyTools) {
-        registerTools(server, memgraph, chromadb);
-        registerParserTool(server);
-        registerAugmentTool(server, memgraph);
-        registerProcessFlowsTool(server, memgraph);
-        registerResources(server, memgraph);
-        registerScanRisksTool(server, memgraph);
+        const { registerLegacyTools } =
+          await import("./tools/legacy/register-legacy-tools.js");
+        await registerLegacyTools(server, memgraph, chromadb);
       }
 
       const transport = new StreamableHTTPServerTransport({

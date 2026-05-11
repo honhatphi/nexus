@@ -9,41 +9,50 @@ import { z } from "zod";
 import path from "node:path";
 import type { CodeIndexer } from "@nexus-hub/core";
 import { WorkspaceResolver, RepoDetector } from "@nexus-hub/core";
+import { mcpJson, mcpError } from "../utils/mcp-response.js";
+import { resolveStartDir } from "../utils/workspace-context.js";
+import {
+  workspaceStatusView,
+  resolveWorkspaceView,
+  syncCurrentRepoView,
+} from "../utils/safe-response.js";
 
 export function registerWorkspaceTools(
   server: McpServer,
   indexer: CodeIndexer,
 ): void {
   // ── nexus_workspace_status ─────────────────────────────────
-  server.registerTool("nexus_workspace_status", {
-    description: "Show the current workspace manifest and registered repos. Does NOT modify the manifest.",
-    inputSchema: {
-      cwd: z
-        .string()
-        .optional()
-        .describe(
-          "Directory to search from. Walks upward until .nexus/workspace.yaml is found. Defaults to NEXUS_WORKSPACE_ROOT env var, then process.cwd().",
-        ),
+  server.registerTool(
+    "nexus_workspace_status",
+    {
+      description:
+        "Show the current workspace manifest and registered repos. Does NOT modify the manifest.",
+      inputSchema: {
+        cwd: z
+          .string()
+          .optional()
+          .describe(
+            "Directory to search from. Walks upward until .nexus/workspace.yaml is found. Defaults to NEXUS_WORKSPACE_ROOT env var, then process.cwd().",
+          ),
+        debug: z
+          .boolean()
+          .optional()
+          .describe(
+            "When true, includes absolute local paths in the response (for developer debugging only).",
+          ),
+      },
     },
-  }, async ({ cwd }) => {
+    async ({ cwd, debug = false }) => {
       try {
-        const startDir =
-          cwd ?? process.env.NEXUS_WORKSPACE_ROOT ?? process.cwd();
+        const startDir = resolveStartDir(cwd);
         const found = await WorkspaceResolver.findWorkspaceRoot(startDir);
 
         if (!found) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error:
-                    "No .nexus/workspace.yaml found. Run nexus_resolve_workspace to initialise.",
-                  hint: `Searched from: ${startDir}. Set NEXUS_WORKSPACE_ROOT to the workspace root.`,
-                }),
-              },
-            ],
-          };
+          return mcpJson({
+            error:
+              "No .nexus/workspace.yaml found. Run nexus_resolve_workspace to initialise.",
+            hint: `Searched from: ${startDir}. Set NEXUS_WORKSPACE_ROOT to the workspace root.`,
+          });
         }
 
         const manifest = await WorkspaceResolver.readManifest(
@@ -81,57 +90,51 @@ export function registerWorkspaceTools(
           };
         }
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  workspaceId: manifest.workspaceId,
-                  workspaceRoot: found.root,
-                  currentRepo,
-                  repos,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return mcpJson(
+          workspaceStatusView(
+            manifest.workspaceId,
+            found.root,
+            currentRepo,
+            repos,
+            debug,
+          ),
+        );
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: String(err) }),
-            },
-          ],
-          isError: true,
-        };
+        return mcpError(err);
       }
-    });
+    },
+  );
 
   // ── nexus_resolve_workspace ────────────────────────────────
-  server.registerTool("nexus_resolve_workspace", {
-    description: "Find or create the workspace manifest. Pass workspaceId to initialise a new workspace at cwd. Returns resolved workspaceId and root.",
-    inputSchema: {
-      cwd: z
-        .string()
-        .optional()
-        .describe(
-          "Directory to search/init from. Defaults to NEXUS_WORKSPACE_ROOT env var, then process.cwd().",
-        ),
-      workspace_id: z
-        .string()
-        .optional()
-        .describe(
-          "If provided and no manifest exists, creates one with this workspaceId.",
-        ),
+  server.registerTool(
+    "nexus_resolve_workspace",
+    {
+      description:
+        "Find or create the workspace manifest. Pass workspaceId to initialise a new workspace at cwd. Returns resolved workspaceId and root.",
+      inputSchema: {
+        cwd: z
+          .string()
+          .optional()
+          .describe(
+            "Directory to search/init from. Defaults to NEXUS_WORKSPACE_ROOT env var, then process.cwd().",
+          ),
+        workspace_id: z
+          .string()
+          .optional()
+          .describe(
+            "If provided and no manifest exists, creates one with this workspaceId.",
+          ),
+        debug: z
+          .boolean()
+          .optional()
+          .describe(
+            "When true, includes absolute local paths in the response (for developer debugging only).",
+          ),
+      },
     },
-  }, async ({ cwd, workspace_id }) => {
+    async ({ cwd, workspace_id, debug = false }) => {
       try {
-        const startDir =
-          cwd ?? process.env.NEXUS_WORKSPACE_ROOT ?? process.cwd();
+        const startDir = resolveStartDir(cwd);
         let found = await WorkspaceResolver.findWorkspaceRoot(startDir);
 
         if (!found && workspace_id) {
@@ -141,95 +144,76 @@ export function registerWorkspaceTools(
         }
 
         if (!found) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error:
-                    "No workspace found. Provide workspace_id to initialise one.",
-                }),
-              },
-            ],
-            isError: true,
-          };
+          return mcpError(
+            "No workspace found. Provide workspace_id to initialise one.",
+          );
         }
 
         const manifest = await WorkspaceResolver.readManifest(
           found.manifestPath,
         );
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  workspaceId: manifest.workspaceId,
-                  workspaceRoot: found.root,
-                  manifestPath: found.manifestPath,
-                  reposRegistered: manifest.repos.length,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return mcpJson(
+          resolveWorkspaceView(
+            manifest.workspaceId,
+            manifest.repos.length,
+            found.root,
+            found.manifestPath,
+            debug,
+          ),
+        );
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: String(err) }),
-            },
-          ],
-          isError: true,
-        };
+        return mcpError(err);
       }
-    });
+    },
+  );
 
   // ── nexus_sync_current_repo ────────────────────────────────
-  server.registerTool("nexus_sync_current_repo", {
-    description: "Detect the current repo (via Git), optionally add it to the workspace manifest, then sync/index it into the Knowledge Base. This is the primary way to keep the KB up to date.",
-    inputSchema: {
-      cwd: z
-        .string()
-        .optional()
-        .describe(
-          "Path to the repo root or any subdirectory. Defaults to NEXUS_WORKSPACE_ROOT env var, then process.cwd().",
-        ),
-      auto_add_to_workspace: z
-        .boolean()
-        .optional()
-        .describe(
-          "If true (default), add the repo to the workspace manifest if not already registered.",
-        ),
-      force_update: z
-        .boolean()
-        .optional()
-        .describe(
-          "If true, re-index all files even if content hash is unchanged.",
-        ),
+  server.registerTool(
+    "nexus_sync_current_repo",
+    {
+      description:
+        "Detect the current repo (via Git), optionally add it to the workspace manifest, then sync/index it into the Knowledge Base. This is the primary way to keep the KB up to date.",
+      inputSchema: {
+        cwd: z
+          .string()
+          .optional()
+          .describe(
+            "Path to the repo root or any subdirectory. Defaults to NEXUS_WORKSPACE_ROOT env var, then process.cwd().",
+          ),
+        auto_add_to_workspace: z
+          .boolean()
+          .optional()
+          .describe(
+            "If true (default), add the repo to the workspace manifest if not already registered.",
+          ),
+        force_update: z
+          .boolean()
+          .optional()
+          .describe(
+            "If true, re-index all files even if content hash is unchanged.",
+          ),
+        debug: z
+          .boolean()
+          .optional()
+          .describe(
+            "When true, includes absolute local paths in the response (for developer debugging only).",
+          ),
+      },
     },
-  }, async ({ cwd, auto_add_to_workspace = true, force_update = false }) => {
+    async ({
+      cwd,
+      auto_add_to_workspace = true,
+      force_update = false,
+      debug = false,
+    }) => {
       try {
-        const startDir =
-          cwd ?? process.env.NEXUS_WORKSPACE_ROOT ?? process.cwd();
+        const startDir = resolveStartDir(cwd);
         const detected = await RepoDetector.detect(startDir);
 
         if (!detected) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error:
-                    "Could not detect a Git repo. Is git installed and is this a git repository?",
-                }),
-              },
-            ],
-            isError: true,
-          };
+          return mcpError(
+            "Could not detect a Git repo. Is git installed and is this a git repository?",
+          );
         }
 
         let addedToManifest = false;
@@ -282,37 +266,20 @@ export function registerWorkspaceTools(
           forceUpdate: force_update,
         });
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  repo: {
-                    repoId: detected.repoId,
-                    repoRoot: detected.repoRoot,
-                    branch: detected.branch,
-                    commit: detected.commit,
-                    addedToManifest,
-                  },
-                  sync: syncResult,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return mcpJson(
+          syncCurrentRepoView(
+            detected.repoId,
+            detected.repoRoot,
+            detected.branch,
+            detected.commit,
+            addedToManifest,
+            syncResult,
+            debug,
+          ),
+        );
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: String(err) }),
-            },
-          ],
-          isError: true,
-        };
+        return mcpError(err);
       }
-    });
+    },
+  );
 }

@@ -15,6 +15,12 @@ import {
   nexusWorkspaceDir,
 } from "@nexus-hub/core";
 import type { Config } from "../config.js";
+import { mcpJson, mcpError } from "../utils/mcp-response.js";
+import {
+  spawnTaskWorkspaceView,
+  taskWorkspaceView,
+} from "../utils/safe-response.js";
+import { resolveStartDir } from "../utils/workspace-context.js";
 
 export function registerTaskWorkspaceTools(
   server: McpServer,
@@ -27,8 +33,8 @@ export function registerTaskWorkspaceTools(
     {
       description: [
         "Create an isolated task workspace for a task.",
-        "Selected files are symlinked from the real repo.",
-        "Codex should cd into the returned workspaceDir and work only with selected-files/.",
+        "Selected files are copied from the real repo into an isolated directory.",
+        "Codex should work only with selected-files/ inside the workspace.",
       ].join(" "),
       inputSchema: {
         task_id: z
@@ -57,6 +63,12 @@ export function registerTaskWorkspaceTools(
           .describe(
             "Explicit relative file paths to include in the workspace. If omitted, derived from context pack manifest.",
           ),
+        debug: z
+          .boolean()
+          .optional()
+          .describe(
+            "When true, includes absolute local paths (workspaceDir, agentsMd, contextPackMd) in the response.",
+          ),
       },
     },
     async ({
@@ -66,22 +78,13 @@ export function registerTaskWorkspaceTools(
       workspace_id,
       cwd,
       selected_files,
+      debug = false,
     }) => {
       try {
-        const startDir = cwd ?? process.cwd();
+        const startDir = resolveStartDir(cwd);
         const detected = await RepoDetector.detect(startDir);
         if (!detected) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error: "Could not detect a Git repo at cwd.",
-                }),
-              },
-            ],
-            isError: true,
-          };
+          return mcpError("Could not detect a Git repo at cwd.");
         }
 
         // Load or build context pack
@@ -114,35 +117,9 @@ export function registerTaskWorkspaceTools(
           selectedFiles: selected_files,
         });
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  workspaceDir: info.workspaceDir,
-                  selectedFiles: info.selectedFiles,
-                  agentsMd: info.agentsMdPath,
-                  contextPackMd: info.contextPackMdPath,
-                  createdAt: info.createdAt,
-                  hint: `cd "${info.workspaceDir}" && codex`,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return mcpJson(spawnTaskWorkspaceView(task_id, info, debug));
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: String(err) }),
-            },
-          ],
-          isError: true,
-        };
+        return mcpError(err);
       }
     },
   );
@@ -155,39 +132,23 @@ export function registerTaskWorkspaceTools(
         "Get info about an existing task workspace (selected files, paths, created at).",
       inputSchema: {
         task_id: z.string().describe("Task identifier."),
+        debug: z
+          .boolean()
+          .optional()
+          .describe(
+            "When true, includes absolute local paths (workspaceDir, repoRoot, agentsMd, contextPackMd) in the response.",
+          ),
       },
     },
-    async ({ task_id }) => {
+    async ({ task_id, debug = false }) => {
       try {
         const info = await TaskWorkspaceManager.getInfo(task_id);
         if (!info) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error: `No workspace found for task '${task_id}'.`,
-                }),
-              },
-            ],
-            isError: true,
-          };
+          return mcpError(`No workspace found for task '${task_id}'.`);
         }
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify(info, null, 2) },
-          ],
-        };
+        return mcpJson(taskWorkspaceView(info, debug));
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: String(err) }),
-            },
-          ],
-          isError: true,
-        };
+        return mcpError(err);
       }
     },
   );
@@ -214,17 +175,7 @@ export function registerTaskWorkspaceTools(
       try {
         const info = await TaskWorkspaceManager.getInfo(task_id);
         if (!info) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error: `No workspace found for task '${task_id}'.`,
-                }),
-              },
-            ],
-            isError: true,
-          };
+          return mcpError(`No workspace found for task '${task_id}'.`);
         }
 
         const generated = await PatchGenerator.generate(info);
@@ -242,21 +193,9 @@ export function registerTaskWorkspaceTools(
           ...(include_full_diff ? { unifiedDiff: generated.unifiedDiff } : {}),
         };
 
-        return {
-          content: [
-            { type: "text" as const, text: JSON.stringify(summary, null, 2) },
-          ],
-        };
+        return mcpJson(summary);
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: String(err) }),
-            },
-          ],
-          isError: true,
-        };
+        return mcpError(err);
       }
     },
   );

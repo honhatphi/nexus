@@ -9,14 +9,15 @@ import type { TokenBudget } from "../contracts/token-budget.js";
 import type { ToolOutput } from "../contracts/tool-output.js";
 import type { ArtifactRef } from "../contracts/artifact.js";
 import type { BudgetEstimator } from "../ports/budget-estimator.js";
+import { CHARS_PER_TOKEN, estimateTokens } from "./token-estimator.js";
 
-const CHARS_PER_TOKEN = 4;
+export {
+  CHARS_PER_TOKEN,
+  estimateTokens,
+  maxCharsForTokens,
+} from "./token-estimator.js";
 
 // ── Token estimator ──────────────────────────────────────────
-
-export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / CHARS_PER_TOKEN);
-}
 
 export function estimateObjectTokens(obj: unknown): number {
   return estimateTokens(JSON.stringify(obj) ?? "");
