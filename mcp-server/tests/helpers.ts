@@ -73,5 +73,9 @@ export function createMockChromaDB(
       upserted.push({ ids, documents });
     },
     async deleteByIds(_ids: string[]) {},
+    async incrementHitCount(_ids: string[]) {},
+    async getByIds(_ids: string[]) {
+      return [];
+    },
   } as unknown as ChromaDBClient & { upserted: typeof upserted };
 }

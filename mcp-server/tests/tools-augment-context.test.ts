@@ -235,7 +235,7 @@ describe("get_symbol_context tool", () => {
         ["lastSyncCommit", []],
       ]),
     );
-    registerContextTool(server, memgraph as any);
+    registerContextTool(server, { graph: memgraph } as any);
 
     const [clientTransport, serverTransport] =
       InMemoryTransport.createLinkedPair();
@@ -261,7 +261,7 @@ describe("get_symbol_context tool", () => {
   it("returns error when symbol not found", async () => {
     const server = new McpServer({ name: "test", version: "0.0.1" });
     const memgraph = createMockMemgraph(); // all queries return []
-    registerContextTool(server, memgraph as any);
+    registerContextTool(server, { graph: memgraph } as any);
 
     const [clientTransport, serverTransport] =
       InMemoryTransport.createLinkedPair();
