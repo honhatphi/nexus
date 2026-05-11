@@ -1,0 +1,25 @@
+{
+  "name": "@nexus-hub/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NexusCore façade — centralized gateway for Knowledge Engine ports and adapters",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@nexus-hub/common-tools": "file:../common-tools"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.4"
+  }
+}

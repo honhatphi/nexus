@@ -4,6 +4,7 @@ import { execSync } from "node:child_process";
 import { MemgraphClient } from "../clients/memgraph.js";
 import { ChromaDBClient } from "../clients/chromadb.js";
 import { hybridSearch, type SearchMode } from "../clients/search.js";
+import type { GraphStore } from "@nexus-hub/core";
 
 // ── Staleness Detection ──────────────────────────────────────
 
@@ -17,12 +18,12 @@ interface StalenessWarning {
 }
 
 export async function checkAllStaleness(
-  memgraph: MemgraphClient,
+  graph: GraphStore | MemgraphClient,
 ): Promise<StalenessWarning[]> {
   const warnings: StalenessWarning[] = [];
 
   try {
-    const services = await memgraph.query(
+    const services = await graph.query(
       `MATCH (s:Service) WHERE s.lastSyncCommit IS NOT NULL
        RETURN s.name AS name, s.lastSyncCommit AS commit`,
     );

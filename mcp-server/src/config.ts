@@ -12,6 +12,19 @@ export interface Config {
   server: {
     port: number;
   };
+  /** Default workspace ID used when no workspace_id is passed by the caller. */
+  workspaceId: string;
+  /** Default token budget applied to context-pack builds. */
+  budget: {
+    maxInputTokens: number;
+    reservedOutputTokens: number;
+  };
+  /** Token budget used when spawning a task workspace context pack. */
+  taskWorkspace: {
+    maxInputTokens: number;
+  };
+  /** When true, registers legacy low-level tools (query_graph, search_knowledge_base, etc.) */
+  enableLegacyTools: boolean;
 }
 
 export function loadConfig(): Config {
@@ -29,5 +42,18 @@ export function loadConfig(): Config {
     server: {
       port: Number(process.env.MCP_SERVER_PORT) || 13100,
     },
+    workspaceId: process.env.NEXUS_WORKSPACE_ID || "default",
+    budget: {
+      maxInputTokens:
+        parseInt(process.env.NEXUS_DEFAULT_MAX_INPUT_TOKENS ?? "", 10) ||
+        12_000,
+      reservedOutputTokens:
+        parseInt(process.env.NEXUS_DEFAULT_RESERVED_TOKENS ?? "", 10) || 3_000,
+    },
+    taskWorkspace: {
+      maxInputTokens:
+        parseInt(process.env.NEXUS_TASK_MAX_INPUT_TOKENS ?? "", 10) || 16_000,
+    },
+    enableLegacyTools: process.env.NEXUS_ENABLE_LEGACY_TOOLS === "1",
   };
 }

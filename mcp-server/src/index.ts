@@ -15,6 +15,24 @@ import {
   registerResources,
 } from "./tools/resources.js";
 import { registerScanRisksTool } from "./tools/scan-risks.js";
+import { registerLedgerTools } from "./tools/ledger.js";
+import { registerArtifactTools } from "./tools/artifacts.js";
+import { registerContextPackTool } from "./tools/context-pack.js";
+import { registerCodeSnippetTool } from "./tools/code-snippet.js";
+import { registerWorkspaceTools } from "./tools/workspace.js";
+import { registerTaskWorkspaceTools } from "./tools/task-workspace.js";
+import {
+  NexusCore,
+  MemgraphGraphStore,
+  ChromadbVectorStore,
+  ExistingHybridRetriever,
+  ExistingPipelineIndexer,
+  FileLedgerStore,
+  LedgerService,
+  FileArtifactStore,
+  ArtifactService,
+  ContextPackBuilder,
+} from "@nexus-hub/core";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -47,6 +65,43 @@ async function main(): Promise<void> {
   }
   console.log("  Memgraph     : constraints applied");
 
+  const workspaceId = config.workspaceId;
+
+  // ── Bootstrap NexusCore façade ─────────────────────────────
+  const graphStore = new MemgraphGraphStore(memgraph);
+  const vectorStore = new ChromadbVectorStore(chromadb);
+  const retriever = new ExistingHybridRetriever(graphStore, vectorStore);
+  const indexer = new ExistingPipelineIndexer(
+    graphStore,
+    vectorStore,
+    workspaceId,
+  );
+
+  const core = new NexusCore({
+    graph: graphStore,
+    vector: vectorStore,
+    retriever,
+    indexer,
+  });
+  console.log("  NexusCore    : façade ready");
+
+  // ── Bootstrap Memory Engine + Artifact Store ───────────────
+  const fileLedgerStore = new FileLedgerStore(workspaceId);
+  const ledgerService = new LedgerService(fileLedgerStore);
+  const artifactService = new ArtifactService(
+    new FileArtifactStore(workspaceId),
+  );
+  const contextPackBuilder = new ContextPackBuilder(
+    graphStore,
+    retriever,
+    fileLedgerStore,
+  );
+  console.log(
+    `  Memory       : ledger store ready (workspace: ${workspaceId})`,
+  );
+  console.log(`  Artifacts    : store ready`);
+  console.log(`  ContextPack  : builder ready`);
+
   // ── HTTP transport (Streamable HTTP) ───────────────────────
   const httpServer = http.createServer(async (req, res) => {
     // Health check
@@ -63,15 +118,26 @@ async function main(): Promise<void> {
         version: "0.1.0",
       });
 
-      registerTools(server, memgraph, chromadb);
-      registerParserTool(server);
-      registerSyncTool(server, memgraph, chromadb);
+      // ── New high-level tools (always registered) ──────────
+      registerLedgerTools(server, ledgerService);
+      registerArtifactTools(server, artifactService);
+      registerContextPackTool(server, contextPackBuilder, config.budget);
+      registerCodeSnippetTool(server, config.workspaceId);
+      registerContextTool(server, core);
       registerDetectChangesTool(server, memgraph);
-      registerContextTool(server, memgraph);
-      registerAugmentTool(server, memgraph);
-      registerProcessFlowsTool(server, memgraph);
-      registerResources(server, memgraph);
-      registerScanRisksTool(server, memgraph);
+      registerSyncTool(server, memgraph, chromadb);
+      registerWorkspaceTools(server, indexer);
+      registerTaskWorkspaceTools(server, contextPackBuilder, config);
+
+      // ── Legacy tools (opt-in via NEXUS_ENABLE_LEGACY_TOOLS=1) ─
+      if (config.enableLegacyTools) {
+        registerTools(server, memgraph, chromadb);
+        registerParserTool(server);
+        registerAugmentTool(server, memgraph);
+        registerProcessFlowsTool(server, memgraph);
+        registerResources(server, memgraph);
+        registerScanRisksTool(server, memgraph);
+      }
 
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,

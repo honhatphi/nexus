@@ -83,6 +83,7 @@ export type {
   GraphClient,
   VectorClient,
   CodeParserInterface,
+  FileHashLookup,
 } from "./pipeline/types.js";
 export type { StalenessInfo } from "./pipeline/phase-4-metadata.js";
 export { getCommitCount } from "./pipeline/phase-4-metadata.js";

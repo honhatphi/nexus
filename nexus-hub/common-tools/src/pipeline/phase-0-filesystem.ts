@@ -28,7 +28,7 @@ const SKIP_DIRS = new Set([
 
 const SOURCE_EXTENSIONS = new Set(Object.keys(EXTENSION_MAP));
 
-/** In-memory hash cache for cross-run staleness detection. */
+/** In-memory hash cache — fallback when no persistent hashStore is injected. */
 const hashCache = new Map<string, string>();
 
 function contentHash(content: string): string {
@@ -58,18 +58,37 @@ export const filesystemPhase: PipelinePhase = {
   name: "filesystem",
   order: 0,
 
-  async run(ctx: PipelineContext, _deps: PipelineDeps): Promise<PhaseResult> {
+  async run(ctx: PipelineContext, deps: PipelineDeps): Promise<PhaseResult> {
     const errors: string[] = [];
     const filePaths = await collectSourceFiles(ctx.servicePath);
+    const store = deps.hashStore;
 
     for (const absPath of filePaths) {
       try {
         const content = await fs.readFile(absPath, "utf-8");
         const relPath = path.relative(ctx.servicePath, absPath);
         const hash = contentHash(content);
-        const oldHash = hashCache.get(absPath);
+
+        // Determine staleness: prefer persistent store, fall back to in-memory cache
+        let oldHash: string | undefined;
+        if (store) {
+          const existing = await store.get(absPath);
+          oldHash = existing?.contentHash;
+        } else {
+          oldHash = hashCache.get(absPath);
+        }
+
         const changed = ctx.forceUpdate || oldHash !== hash;
-        hashCache.set(absPath, hash);
+
+        // Write back to whichever store is active
+        if (store) {
+          await store.set(absPath, {
+            contentHash: hash,
+            lastIndexedAt: new Date().toISOString(),
+          });
+        } else {
+          hashCache.set(absPath, hash);
+        }
 
         const entry: FileEntry = {
           absolutePath: absPath,
@@ -91,6 +110,11 @@ export const filesystemPhase: PipelinePhase = {
           `${relPath}: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
+    }
+
+    // Flush persistent store after scanning all files
+    if (store) {
+      await store.flush();
     }
 
     return {
