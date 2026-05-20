@@ -20,7 +20,9 @@ beforeAll(() => {
 describe("CodeParser.detectLanguage — Dart", () => {
   it("detects .dart → dart", () => {
     expect(parser.detectLanguage("main.dart")).toBe("dart");
-    expect(parser.detectLanguage("lib/services/auth_service.dart")).toBe("dart");
+    expect(parser.detectLanguage("lib/services/auth_service.dart")).toBe(
+      "dart",
+    );
   });
 });
 
@@ -352,9 +354,7 @@ void initAnalytics() {
 }
 `;
     const result = await parser.parseSource("analytics.dart", source);
-    const p = result.infraPatterns.find(
-      (p) => p.kind === "firebase_analytics",
-    );
+    const p = result.infraPatterns.find((p) => p.kind === "firebase_analytics");
     expect(p).toBeDefined();
   });
 
@@ -365,9 +365,7 @@ Future<void> trackPurchase(String item) async {
 }
 `;
     const result = await parser.parseSource("analytics.dart", source);
-    const p = result.infraPatterns.find(
-      (p) => p.kind === "firebase_analytics",
-    );
+    const p = result.infraPatterns.find((p) => p.kind === "firebase_analytics");
     expect(p).toBeDefined();
   });
 
@@ -378,9 +376,7 @@ void trackScreen(String name) {
 }
 `;
     const result = await parser.parseSource("analytics.dart", source);
-    const p = result.infraPatterns.find(
-      (p) => p.kind === "firebase_analytics",
-    );
+    const p = result.infraPatterns.find((p) => p.kind === "firebase_analytics");
     expect(p).toBeDefined();
   });
 });

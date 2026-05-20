@@ -793,9 +793,13 @@ function detectDartFirebasePatterns(root: SyntaxNode): InfraPattern[] {
 
       let target = rule.fallback;
       if (rule.targetArg === 0) {
-        const argsNode = argPart.namedChildren.find((c) => c?.type === "arguments");
+        const argsNode = argPart.namedChildren.find(
+          (c) => c?.type === "arguments",
+        );
         if (argsNode) {
-          const firstArg = argsNode.namedChildren.find((c) => c?.type === "argument");
+          const firstArg = argsNode.namedChildren.find(
+            (c) => c?.type === "argument",
+          );
           if (firstArg) {
             const strNodes = findAll(firstArg, ["string_literal"]);
             if (strNodes.length > 0) {
