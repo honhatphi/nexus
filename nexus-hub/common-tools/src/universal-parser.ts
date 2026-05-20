@@ -41,6 +41,7 @@ export class CodeParser {
     javascript: "tree-sitter-javascript.wasm",
     java: "tree-sitter-java.wasm",
     csharp: "tree-sitter-c_sharp.wasm",
+    dart: "tree-sitter-dart.wasm",
   };
 
   // ── Init & Language Loading ──────────────────────────────

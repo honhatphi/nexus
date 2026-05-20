@@ -12,6 +12,7 @@ export type SupportedLanguage =
   | "javascript"
   | "java"
   | "csharp"
+  | "dart"
   | "yaml";
 
 export const EXTENSION_MAP: Record<string, SupportedLanguage> = {
@@ -26,6 +27,7 @@ export const EXTENSION_MAP: Record<string, SupportedLanguage> = {
   ".cjs": "javascript",
   ".java": "java",
   ".cs": "csharp",
+  ".dart": "dart",
   ".yml": "yaml",
   ".yaml": "yaml",
 };
@@ -70,6 +72,13 @@ export type InfraKind =
   | "sqs_receive"
   | "nats_publish"
   | "nats_subscribe"
+  | "firebase_firestore"
+  | "firebase_auth"
+  | "firebase_storage"
+  | "firebase_messaging"
+  | "firebase_realtime_db"
+  | "firebase_crashlytics"
+  | "firebase_analytics"
   | "class_inherit";
 
 /**

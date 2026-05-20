@@ -11,6 +11,7 @@ import { extractPHP } from "./php.js";
 import { extractTypeScript, extractTSClasses } from "./typescript.js";
 import { extractJava, extractJavaClasses } from "./java.js";
 import { extractCSharp, extractCSharpClasses } from "./csharp.js";
+import { extractDart, extractDartClasses } from "./dart.js";
 
 // Tree-sitter languages (excludes "yaml" which uses js-yaml)
 export type TreeSitterLanguage = Exclude<SupportedLanguage, "yaml">;
@@ -26,6 +27,7 @@ export const EXTRACTORS: Record<
   javascript: extractTypeScript, // JS uses same AST structure as TS
   java: extractJava,
   csharp: extractCSharp,
+  dart: extractDart,
 };
 
 export const CLASS_EXTRACTORS: Partial<
@@ -36,4 +38,5 @@ export const CLASS_EXTRACTORS: Partial<
   java: extractJavaClasses,
   typescript: extractTSClasses,
   javascript: extractTSClasses,
+  dart: extractDartClasses,
 };
