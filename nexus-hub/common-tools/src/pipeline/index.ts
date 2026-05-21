@@ -19,10 +19,20 @@ export class PipelineEngine {
     return this;
   }
 
-  async run(ctx: PipelineContext, deps: PipelineDeps): Promise<PipelineReport> {
+  async run(
+    ctx: PipelineContext,
+    deps: PipelineDeps,
+    opts?: {
+      /** Called just before each phase starts — useful for progress reporting. */
+      onPhaseStart?: (name: string, index: number, total: number) => void;
+    },
+  ): Promise<PipelineReport> {
     const results: PhaseResult[] = [];
+    const total = this.phases.length;
 
-    for (const phase of this.phases) {
+    for (let i = 0; i < this.phases.length; i++) {
+      const phase = this.phases[i];
+      opts?.onPhaseStart?.(phase.name, i, total);
       const start = Date.now();
       try {
         const result = await phase.run(ctx, deps);

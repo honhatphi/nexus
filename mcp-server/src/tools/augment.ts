@@ -30,56 +30,61 @@ export function registerAugmentTool(
   server: McpServer,
   memgraph: MemgraphClient,
 ): void {
-  server.registerTool("augment", {
-    description: "Enrich a search pattern with graph context. Given a function/class name or keyword, returns matching symbols with their callers, callees, process flows, and community — in a compact format optimized for agent context enrichment. Designed to be fast (~500ms). Use as a lightweight alternative to get_symbol_context when you need quick info for multiple matches.",
-    inputSchema: {
-      pattern: z
-        .string()
-        .min(2)
-        .describe(
-          "Search pattern — function name, class name, or keyword (min 2 chars). Matched against symbol names via case-insensitive contains.",
-        ),
-      service: z
-        .string()
-        .optional()
-        .describe("Optional service name to scope the search."),
-      limit: z
-        .number()
-        .int()
-        .min(1)
-        .max(10)
-        .default(5)
-        .describe(
-          "Maximum number of matching symbols to enrich (1–10, default 5).",
-        ),
-      action: z
-        .enum([
-          "search",
-          "promoteCandidate",
-          "rejectCandidate",
-          "listCandidates",
-        ])
-        .default("search")
-        .describe(
-          "'search' (default): symbol enrichment. " +
-            "'promoteCandidate': approve a CandidatePattern (requires candidateId + approvedAs). " +
-            "'rejectCandidate': reject a CandidatePattern (requires candidateId + reason). " +
-            "'listCandidates': list all pending CandidatePatterns for a service.",
-        ),
-      candidateId: z
-        .string()
-        .optional()
-        .describe("CandidatePattern id for promote/reject actions."),
-      approvedAs: z
-        .string()
-        .optional()
-        .describe("InfraKind to promote the candidate to."),
-      reason: z
-        .string()
-        .optional()
-        .describe("Rejection reason for rejectCandidate action."),
+  server.registerTool(
+    "augment",
+    {
+      annotations: { title: "✨ Augment" },
+      description:
+        "Enrich a search pattern with graph context. Given a function/class name or keyword, returns matching symbols with their callers, callees, process flows, and community — in a compact format optimized for agent context enrichment. Designed to be fast (~500ms). Use as a lightweight alternative to get_symbol_context when you need quick info for multiple matches.",
+      inputSchema: {
+        pattern: z
+          .string()
+          .min(2)
+          .describe(
+            "Search pattern — function name, class name, or keyword (min 2 chars). Matched against symbol names via case-insensitive contains.",
+          ),
+        service: z
+          .string()
+          .optional()
+          .describe("Optional service name to scope the search."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(10)
+          .default(5)
+          .describe(
+            "Maximum number of matching symbols to enrich (1–10, default 5).",
+          ),
+        action: z
+          .enum([
+            "search",
+            "promoteCandidate",
+            "rejectCandidate",
+            "listCandidates",
+          ])
+          .default("search")
+          .describe(
+            "'search' (default): symbol enrichment. " +
+              "'promoteCandidate': approve a CandidatePattern (requires candidateId + approvedAs). " +
+              "'rejectCandidate': reject a CandidatePattern (requires candidateId + reason). " +
+              "'listCandidates': list all pending CandidatePatterns for a service.",
+          ),
+        candidateId: z
+          .string()
+          .optional()
+          .describe("CandidatePattern id for promote/reject actions."),
+        approvedAs: z
+          .string()
+          .optional()
+          .describe("InfraKind to promote the candidate to."),
+        reason: z
+          .string()
+          .optional()
+          .describe("Rejection reason for rejectCandidate action."),
+      },
     },
-  }, async ({
+    async ({
       pattern,
       service,
       limit,
@@ -334,5 +339,6 @@ export function registerAugmentTool(
           isError: true,
         };
       }
-    });
+    },
+  );
 }

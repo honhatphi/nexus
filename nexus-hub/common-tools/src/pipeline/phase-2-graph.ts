@@ -92,68 +92,90 @@ async function upsertSymbolsToGraph(
     },
   );
 
+  if (parseResult.symbols.length === 0) {
+    return { nodesUpserted, relsCreated };
+  }
+
+  // ── Batch: all Function nodes in one UNWIND write ────────
+  // Reduces N individual Memgraph round-trips to 1 per file.
+  const symbolRows = parseResult.symbols.map((sym) => ({
+    name: sym.name,
+    file: parseResult.file,
+    service: serviceName,
+    kind: sym.kind,
+    language: parseResult.language,
+    returnType: sym.returnType ?? "",
+    startLine: sym.startLine,
+    endLine: sym.endLine,
+    signature: buildSignature(sym),
+    docstring: sym.docstring ?? "",
+    sv: SCHEMA_VERSION,
+  }));
+
+  await graph.write(
+    `UNWIND $symbols AS sym
+     MERGE (f:Function {name: sym.name, file: sym.file, service: sym.service})
+     ON CREATE SET f.firstSeenAt = timestamp(), f.source = 'code'
+     SET f.schemaVersion = sym.sv,
+         f.lastSeenAt  = timestamp(),
+         f.kind        = sym.kind,
+         f.language    = sym.language,
+         f.returnType  = sym.returnType,
+         f.startLine   = sym.startLine,
+         f.endLine     = sym.endLine,
+         f.signature   = sym.signature,
+         f.docstring   = sym.docstring
+     WITH f, sym
+     MERGE (fi:File {path: sym.file, service: sym.service})
+     MERGE (f)-[:DEFINED_IN]->(fi)`,
+    { symbols: symbolRows },
+  );
+  nodesUpserted += symbolRows.length;
+
+  // ── Batch: all CALLS edges in one UNWIND write ────────────
+  type CallRow = {
+    callerName: string;
+    callerFile: string;
+    service: string;
+    calleeName: string;
+    line: number;
+    confidence: number;
+    reason: string;
+  };
+  const callRows: CallRow[] = [];
+
   for (const sym of parseResult.symbols) {
-    const signature = buildSignature(sym);
-
-    await graph.write(
-      `MERGE (f:Function {name: $name, file: $file, service: $service})
-       ON CREATE SET f.firstSeenAt = timestamp(), f.source = 'code'
-       SET f.schemaVersion = $sv,
-           f.lastSeenAt  = timestamp(),
-           f.kind        = $kind,
-           f.language    = $language,
-           f.returnType  = $returnType,
-           f.startLine   = $startLine,
-           f.endLine     = $endLine,
-           f.signature   = $signature,
-           f.docstring   = $docstring
-       WITH f
-       MERGE (fi:File {path: $file, service: $service})
-       MERGE (f)-[:DEFINED_IN]->(fi)`,
-      {
-        name: sym.name,
-        file: parseResult.file,
-        service: serviceName,
-        kind: sym.kind,
-        language: parseResult.language,
-        returnType: sym.returnType ?? "",
-        startLine: sym.startLine,
-        endLine: sym.endLine,
-        signature,
-        docstring: sym.docstring ?? "",
-        sv: SCHEMA_VERSION,
-      },
-    );
-    nodesUpserted++;
-
-    // CALLS edges with confidence
     for (const call of sym.calls) {
       const { confidence, reason } = computeCallConfidence(
         parseResult.file,
         call.name,
         parseResult,
       );
-
-      await graph.write(
-        `MERGE (caller:Function {name: $callerName, file: $callerFile, service: $service})
-         MERGE (callee:Function {name: $calleeName})
-         MERGE (caller)-[r:CALLS]->(callee)
-         SET r.line = $line,
-             r.confidence = $confidence,
-             r.reason = $reason,
-             r.updatedAt = timestamp()`,
-        {
-          callerName: sym.name,
-          callerFile: parseResult.file,
-          service: serviceName,
-          calleeName: call.name,
-          line: call.line,
-          confidence,
-          reason,
-        },
-      );
-      relsCreated++;
+      callRows.push({
+        callerName: sym.name,
+        callerFile: parseResult.file,
+        service: serviceName,
+        calleeName: call.name,
+        line: call.line,
+        confidence,
+        reason,
+      });
     }
+  }
+
+  if (callRows.length > 0) {
+    await graph.write(
+      `UNWIND $calls AS c
+       MERGE (caller:Function {name: c.callerName, file: c.callerFile, service: c.service})
+       MERGE (callee:Function {name: c.calleeName})
+       MERGE (caller)-[r:CALLS]->(callee)
+       SET r.line = c.line,
+           r.confidence = c.confidence,
+           r.reason = c.reason,
+           r.updatedAt = timestamp()`,
+      { calls: callRows },
+    );
+    relsCreated += callRows.length;
   }
 
   return { nodesUpserted, relsCreated };
@@ -227,62 +249,88 @@ async function upsertInfraToGraph(
   let infraNodes = 0;
   let infraRels = 0;
 
-  // Classes + inheritance
-  for (const cls of parseResult.classes) {
-    await graph.write(
-      `MERGE (c:Class {name: $name, file: $file, service: $service})
-       ON CREATE SET c.firstSeenAt = timestamp(), c.source = 'code'
-       SET c.schemaVersion = $sv,
-           c.lastSeenAt = timestamp(),
-           c.startLine = $startLine,
-           c.endLine   = $endLine,
-           c.docstring = $docstring
-       WITH c
-       MERGE (fi:File {path: $file, service: $service})
-       MERGE (c)-[:DEFINED_IN]->(fi)`,
-      {
-        name: cls.name,
-        file: parseResult.file,
-        service: serviceName,
-        startLine: cls.startLine,
-        endLine: cls.endLine,
-        docstring: cls.docstring ?? "",
-        sv: SCHEMA_VERSION,
-      },
-    );
-    infraNodes++;
+  // ── Batch: Classes + inheritance + method edges ─────────
+  if (parseResult.classes.length > 0) {
+    const classRows = parseResult.classes.map((cls) => ({
+      name: cls.name,
+      file: parseResult.file,
+      service: serviceName,
+      startLine: cls.startLine,
+      endLine: cls.endLine,
+      docstring: cls.docstring ?? "",
+      sv: SCHEMA_VERSION,
+    }));
 
-    for (const base of cls.bases) {
-      await graph.write(
-        `MERGE (child:Class {name: $childName, file: $file, service: $service})
-         MERGE (parent:Class {name: $baseName})
-         MERGE (child)-[r:INHERITS]->(parent)
-         SET r.confidence = $confidence, r.updatedAt = timestamp()`,
-        {
+    await graph.write(
+      `UNWIND $classes AS cls
+       MERGE (c:Class {name: cls.name, file: cls.file, service: cls.service})
+       ON CREATE SET c.firstSeenAt = timestamp(), c.source = 'code'
+       SET c.schemaVersion = cls.sv, c.lastSeenAt = timestamp(),
+           c.startLine = cls.startLine, c.endLine = cls.endLine,
+           c.docstring = cls.docstring
+       WITH c, cls
+       MERGE (fi:File {path: cls.file, service: cls.service})
+       MERGE (c)-[:DEFINED_IN]->(fi)`,
+      { classes: classRows },
+    );
+    infraNodes += classRows.length;
+
+    type InheritRow = {
+      childName: string;
+      file: string;
+      service: string;
+      baseName: string;
+    };
+    const inheritRows: InheritRow[] = [];
+    for (const cls of parseResult.classes) {
+      for (const base of cls.bases) {
+        inheritRows.push({
           childName: cls.name,
           file: parseResult.file,
           service: serviceName,
           baseName: base,
-          confidence: 0.9,
-        },
+        });
+      }
+    }
+    if (inheritRows.length > 0) {
+      await graph.write(
+        `UNWIND $inherits AS ih
+         MERGE (child:Class {name: ih.childName, file: ih.file, service: ih.service})
+         MERGE (parent:Class {name: ih.baseName})
+         MERGE (child)-[r:INHERITS]->(parent)
+         SET r.confidence = 0.9, r.updatedAt = timestamp()`,
+        { inherits: inheritRows },
       );
-      infraRels++;
+      infraRels += inheritRows.length;
     }
 
-    for (const method of cls.methods) {
-      await graph.write(
-        `MATCH (f:Function {name: $methodName, file: $file, service: $service})
-         MERGE (c:Class {name: $className, file: $file, service: $service})
-         MERGE (f)-[r:METHOD_OF]->(c)
-         SET r.updatedAt = timestamp()`,
-        {
+    type MethodRow = {
+      methodName: string;
+      file: string;
+      service: string;
+      className: string;
+    };
+    const methodRows: MethodRow[] = [];
+    for (const cls of parseResult.classes) {
+      for (const method of cls.methods) {
+        methodRows.push({
           methodName: method,
           file: parseResult.file,
           service: serviceName,
           className: cls.name,
-        },
+        });
+      }
+    }
+    if (methodRows.length > 0) {
+      await graph.write(
+        `UNWIND $methods AS m
+         MATCH (f:Function {name: m.methodName, file: m.file, service: m.service})
+         MERGE (c:Class {name: m.className, file: m.file, service: m.service})
+         MERGE (f)-[r:METHOD_OF]->(c)
+         SET r.updatedAt = timestamp()`,
+        { methods: methodRows },
       );
-      infraRels++;
+      infraRels += methodRows.length;
     }
   }
 

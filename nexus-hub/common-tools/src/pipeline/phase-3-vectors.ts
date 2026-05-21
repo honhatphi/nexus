@@ -9,7 +9,6 @@ import type {
   PipelineContext,
   PipelineDeps,
   PhaseResult,
-  VectorClient,
 } from "./types.js";
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -22,13 +21,24 @@ function buildFunctionSignature(fn: FunctionInfo): string {
   return `${fn.name}(${params})${ret}`;
 }
 
-// ── Vector Upsert: Functions + Classes ───────────────────────
+// ── Vector builders (pure — no I/O) ────────────────────────
+// These collect vectors into arrays; the phase runner batches
+// all files together and calls vectors.upsert() once per VECTOR_BATCH_SIZE.
 
-async function upsertToVector(
-  vectors: VectorClient,
+const VECTOR_BATCH_SIZE = 200; // ChromaDB recommended max per upsert call
+
+type VectorBatch = {
+  ids: string[];
+  documents: string[];
+  metadatas: Record<string, string | number | boolean>[];
+};
+
+// ── Builder: Functions + Classes ─────────────────────────────
+
+function buildFunctionVectors(
   serviceName: string,
   parseResult: ParseResult,
-): Promise<number> {
+): VectorBatch {
   const ids: string[] = [];
   const documents: string[] = [];
   const metadatas: Record<string, string | number | boolean>[] = [];
@@ -101,23 +111,20 @@ async function upsertToVector(
     });
   }
 
-  if (ids.length === 0) return 0;
-  await vectors.upsert(ids, documents, metadatas);
-  return ids.length;
+  return { ids, documents, metadatas };
 }
 
-// ── Vector Upsert: DAGs ──────────────────────────────────────
+// ── Builder: DAGs ─────────────────────────────────────────────
 
-async function upsertDagsToVector(
-  vectors: VectorClient,
+function buildDagVectors(
   serviceName: string,
   parseResult: ParseResult,
-): Promise<number> {
-  if (parseResult.dags.length === 0) return 0;
-
+): VectorBatch {
   const ids: string[] = [];
   const documents: string[] = [];
   const metadatas: Record<string, string | number | boolean>[] = [];
+
+  if (parseResult.dags.length === 0) return { ids, documents, metadatas };
 
   for (const dag of parseResult.dags) {
     const dagId = `${serviceName}::${parseResult.file}::dag::${dag.name}`;
@@ -187,8 +194,7 @@ async function upsertDagsToVector(
     }
   }
 
-  await vectors.upsert(ids, documents, metadatas);
-  return ids.length;
+  return { ids, documents, metadatas };
 }
 
 // ── Phase Definition ─────────────────────────────────────────
@@ -200,31 +206,47 @@ export const vectorUpsertPhase: PipelinePhase = {
   async run(ctx: PipelineContext, deps: PipelineDeps): Promise<PhaseResult> {
     const errors: string[] = [];
 
+    // Collect all vectors cross-file first, then upsert in batches.
+    // Avoids N separate HTTP calls to ChromaDB (one per file in old approach).
+    const allIds: string[] = [];
+    const allDocuments: string[] = [];
+    const allMetadatas: Record<string, string | number | boolean>[] = [];
+    let dagVectorCount = 0;
+
     for (const [, parseResult] of ctx.parseResults) {
       try {
-        // DAG vectors
         if (parseResult.dags.length > 0) {
-          const dagVectorCount = await upsertDagsToVector(
-            deps.vectors,
-            ctx.serviceName,
-            parseResult,
-          );
-          ctx.stats.totalDagVectors += dagVectorCount;
+          const dagBatch = buildDagVectors(ctx.serviceName, parseResult);
+          allIds.push(...dagBatch.ids);
+          allDocuments.push(...dagBatch.documents);
+          allMetadatas.push(...dagBatch.metadatas);
+          dagVectorCount += dagBatch.ids.length;
         }
 
-        // Function + class vectors
-        const vectorCount = await upsertToVector(
-          deps.vectors,
-          ctx.serviceName,
-          parseResult,
-        );
-        ctx.stats.totalVectors += vectorCount;
+        const fnBatch = buildFunctionVectors(ctx.serviceName, parseResult);
+        allIds.push(...fnBatch.ids);
+        allDocuments.push(...fnBatch.documents);
+        allMetadatas.push(...fnBatch.metadatas);
       } catch (err) {
         errors.push(
           `${parseResult.file}: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }
+
+    // Batch upsert — VECTOR_BATCH_SIZE keeps each HTTP payload within
+    // ChromaDB's recommended limit and avoids timeouts on large repos.
+    for (let i = 0; i < allIds.length; i += VECTOR_BATCH_SIZE) {
+      const end = Math.min(i + VECTOR_BATCH_SIZE, allIds.length);
+      await deps.vectors.upsert(
+        allIds.slice(i, end),
+        allDocuments.slice(i, end),
+        allMetadatas.slice(i, end),
+      );
+    }
+
+    ctx.stats.totalVectors += allIds.length - dagVectorCount;
+    ctx.stats.totalDagVectors += dagVectorCount;
 
     return {
       phase: "vector-upsert",

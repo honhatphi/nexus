@@ -25,6 +25,7 @@ export function registerWorkspaceTools(
   server.registerTool(
     "nexus_workspace_status",
     {
+      annotations: { title: "🗺️ Workspace Status" },
       description:
         "Show the current workspace manifest and registered repos. Does NOT modify the manifest.",
       inputSchema: {
@@ -109,6 +110,7 @@ export function registerWorkspaceTools(
   server.registerTool(
     "nexus_resolve_workspace",
     {
+      annotations: { title: "🗂️ Resolve Workspace" },
       description:
         "Find or create the workspace manifest. Pass workspaceId to initialise a new workspace at cwd. Returns resolved workspaceId and root.",
       inputSchema: {
@@ -171,6 +173,7 @@ export function registerWorkspaceTools(
   server.registerTool(
     "nexus_sync_current_repo",
     {
+      annotations: { title: "⚡ Sync Current Repo" },
       description:
         "Detect the current repo (via Git), optionally add it to the workspace manifest, then sync/index it into the Knowledge Base. This is the primary way to keep the KB up to date.",
       inputSchema: {

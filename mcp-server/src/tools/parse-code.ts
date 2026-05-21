@@ -13,29 +13,33 @@ import type { ParseResult } from "@nexus-hub/common-tools";
  * Accepts a file path OR raw source code & parses it with tree-sitter.
  */
 export function registerParserTool(server: McpServer): void {
-  server.registerTool("parse_code", {
-    description: `Parse a source file (.go, .py, .php, .ts/.tsx) using tree-sitter and extract functions, parameters, return types, and function calls into a unified JSON schema. Supported extensions: ${Object.keys(EXTENSION_MAP).join(", ")}`,
-    inputSchema: {
-      filePath: z
-        .string()
-        .optional()
-        .describe(
-          "Absolute path to the source file to parse. If provided, source is read from disk.",
-        ),
-      source: z
-        .string()
-        .optional()
-        .describe(
-          "Raw source code string. Required if filePath is not provided.",
-        ),
-      language: z
-        .enum(["go", "python", "php", "typescript"])
-        .optional()
-        .describe(
-          "Explicit language override. Auto-detected from filePath extension if omitted.",
-        ),
+  server.registerTool(
+    "parse_code",
+    {
+      annotations: { title: "🧩 Parse Code" },
+      description: `Parse a source file (.go, .py, .php, .ts/.tsx) using tree-sitter and extract functions, parameters, return types, and function calls into a unified JSON schema. Supported extensions: ${Object.keys(EXTENSION_MAP).join(", ")}`,
+      inputSchema: {
+        filePath: z
+          .string()
+          .optional()
+          .describe(
+            "Absolute path to the source file to parse. If provided, source is read from disk.",
+          ),
+        source: z
+          .string()
+          .optional()
+          .describe(
+            "Raw source code string. Required if filePath is not provided.",
+          ),
+        language: z
+          .enum(["go", "python", "php", "typescript"])
+          .optional()
+          .describe(
+            "Explicit language override. Auto-detected from filePath extension if omitted.",
+          ),
+      },
     },
-  }, async ({ filePath, source, language }) => {
+    async ({ filePath, source, language }) => {
       try {
         // Resolve source code
         let code = source;
@@ -105,5 +109,6 @@ export function registerParserTool(server: McpServer): void {
           isError: true,
         };
       }
-    });
+    },
+  );
 }
