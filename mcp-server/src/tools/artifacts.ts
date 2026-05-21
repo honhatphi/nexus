@@ -13,25 +13,30 @@ export function registerArtifactTools(
   artifacts: ArtifactService,
 ): void {
   // ── nexus_store_artifact ───────────────────────────────────
-  server.registerTool("nexus_store_artifact", {
-    description: "Store large output (test logs, diffs, terminal output, query results) as an artifact so it does not occupy the prompt context. Returns a compact summary and an artifactId for later retrieval.",
-    inputSchema: {
-      kind: z
-        .enum([
-          "test_log",
-          "diff",
-          "query_result",
-          "terminal_output",
-          "raw_context",
-        ])
-        .describe("Type of content being stored."),
-      content: z.string().describe("Full raw content to store."),
-      task_id: z
-        .string()
-        .optional()
-        .describe("Optional task ID to associate this artifact with."),
+  server.registerTool(
+    "nexus_store_artifact",
+    {
+      annotations: { title: "💾 Store Artifact" },
+      description:
+        "Store large output (test logs, diffs, terminal output, query results) as an artifact so it does not occupy the prompt context. Returns a compact summary and an artifactId for later retrieval.",
+      inputSchema: {
+        kind: z
+          .enum([
+            "test_log",
+            "diff",
+            "query_result",
+            "terminal_output",
+            "raw_context",
+          ])
+          .describe("Type of content being stored."),
+        content: z.string().describe("Full raw content to store."),
+        task_id: z
+          .string()
+          .optional()
+          .describe("Optional task ID to associate this artifact with."),
+      },
     },
-  }, async ({ kind, content, task_id }) => {
+    async ({ kind, content, task_id }) => {
       try {
         const result = await artifacts.storeArtifact({
           kind,
@@ -54,17 +59,23 @@ export function registerArtifactTools(
           isError: true,
         };
       }
-    });
+    },
+  );
 
   // ── nexus_get_artifact_summary ─────────────────────────────
-  server.registerTool("nexus_get_artifact_summary", {
-    description: "Get the compact summary and metadata for a stored artifact without fetching its full content.",
-    inputSchema: {
-      artifact_id: z
-        .string()
-        .describe("Artifact ID returned by nexus_store_artifact."),
+  server.registerTool(
+    "nexus_get_artifact_summary",
+    {
+      annotations: { title: "📋 Artifact Summary" },
+      description:
+        "Get the compact summary and metadata for a stored artifact without fetching its full content.",
+      inputSchema: {
+        artifact_id: z
+          .string()
+          .describe("Artifact ID returned by nexus_store_artifact."),
+      },
     },
-  }, async ({ artifact_id }) => {
+    async ({ artifact_id }) => {
       try {
         const ref = await artifacts.getArtifactSummary(artifact_id);
         if (!ref) {
@@ -95,27 +106,33 @@ export function registerArtifactTools(
           isError: true,
         };
       }
-    });
+    },
+  );
 
   // ── nexus_get_artifact_excerpt ─────────────────────────────
-  server.registerTool("nexus_get_artifact_excerpt", {
-    description: "Retrieve a line-range excerpt from a stored artifact. Capped at maxTokens to prevent context overflow. Use this for targeted inspection of test failures, diffs, or query results.",
-    inputSchema: {
-      artifact_id: z.string().describe("Artifact ID to read from."),
-      start_line: z
-        .number()
-        .optional()
-        .describe("1-based start line (default: 1)."),
-      end_line: z
-        .number()
-        .optional()
-        .describe("Inclusive end line (default: start_line + 49)."),
-      max_tokens: z
-        .number()
-        .optional()
-        .describe("Token cap for the excerpt (default: 1500)."),
+  server.registerTool(
+    "nexus_get_artifact_excerpt",
+    {
+      annotations: { title: "📄 Artifact Excerpt" },
+      description:
+        "Retrieve a line-range excerpt from a stored artifact. Capped at maxTokens to prevent context overflow. Use this for targeted inspection of test failures, diffs, or query results.",
+      inputSchema: {
+        artifact_id: z.string().describe("Artifact ID to read from."),
+        start_line: z
+          .number()
+          .optional()
+          .describe("1-based start line (default: 1)."),
+        end_line: z
+          .number()
+          .optional()
+          .describe("Inclusive end line (default: start_line + 49)."),
+        max_tokens: z
+          .number()
+          .optional()
+          .describe("Token cap for the excerpt (default: 1500)."),
+      },
     },
-  }, async ({ artifact_id, start_line, end_line, max_tokens }) => {
+    async ({ artifact_id, start_line, end_line, max_tokens }) => {
       try {
         const endDefault = start_line ? start_line + 49 : 50;
         const excerpt = await artifacts.getArtifactExcerpt(
@@ -152,5 +169,6 @@ export function registerArtifactTools(
           isError: true,
         };
       }
-    });
+    },
+  );
 }

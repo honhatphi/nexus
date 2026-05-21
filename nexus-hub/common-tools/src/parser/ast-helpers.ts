@@ -88,7 +88,8 @@ export function extractDocstring(node: SyntaxNode): string | null {
       type === "comment" ||
       type === "doc_comment" ||
       type === "line_comment" ||
-      type === "block_comment"
+      type === "block_comment" ||
+      type === "documentation_comment"
     ) {
       commentLines.unshift(prev.text.trim());
       prev = prev.previousNamedSibling;

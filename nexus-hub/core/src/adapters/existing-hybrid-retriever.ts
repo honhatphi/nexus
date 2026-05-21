@@ -59,6 +59,7 @@ export class ExistingHybridRetriever implements Retriever {
     query: string,
     topK: number,
   ): Promise<SearchResult[]> {
+    const safeTopK = Math.max(1, Math.trunc(topK));
     const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const cypher = `
       MATCH (n)
@@ -74,11 +75,10 @@ export class ExistingHybridRetriever implements Retriever {
         coalesce(n.docstring, '') AS docstring,
         coalesce(n.service, '') AS service,
         labels(n)[0] AS label
-      LIMIT $topK
+      LIMIT ${safeTopK}
     `;
     const rows = await this.graph.query(cypher, {
       pattern: escapedQuery,
-      topK,
     });
 
     return rows.map((row) => {

@@ -212,26 +212,31 @@ export function registerScanRisksTool(
   server: McpServer,
   memgraph: MemgraphClient,
 ): void {
-  server.registerTool("scan_risks", {
-    description: "On-demand risk assessment from the Knowledge Base. Reads directly from Memgraph — no re-sync needed. Returns structured risk items by severity.",
-    inputSchema: {
-      service: z
-        .string()
-        .describe("Service name to scan (e.g. 'warehouse-2.0')."),
-      riskTypes: z
-        .array(z.enum(["security", "performance", "stability", "upgrade"]))
-        .default(["security", "stability"])
-        .describe("Risk types to check. Default: security + stability."),
-      threshold: z
-        .number()
-        .min(0)
-        .max(1)
-        .default(0.5)
-        .describe(
-          "Minimum risk score to include in results (0.0–1.0). Default: 0.5.",
-        ),
+  server.registerTool(
+    "scan_risks",
+    {
+      annotations: { title: "🔐 Scan Risks" },
+      description:
+        "On-demand risk assessment from the Knowledge Base. Reads directly from Memgraph — no re-sync needed. Returns structured risk items by severity.",
+      inputSchema: {
+        service: z
+          .string()
+          .describe("Service name to scan (e.g. 'warehouse-2.0')."),
+        riskTypes: z
+          .array(z.enum(["security", "performance", "stability", "upgrade"]))
+          .default(["security", "stability"])
+          .describe("Risk types to check. Default: security + stability."),
+        threshold: z
+          .number()
+          .min(0)
+          .max(1)
+          .default(0.5)
+          .describe(
+            "Minimum risk score to include in results (0.0–1.0). Default: 0.5.",
+          ),
+      },
     },
-  }, async ({ service, riskTypes, threshold }) => {
+    async ({ service, riskTypes, threshold }) => {
       try {
         const allRisks: RiskItem[] = [];
 
@@ -311,5 +316,6 @@ export function registerScanRisksTool(
           isError: true,
         };
       }
-    });
+    },
+  );
 }

@@ -31,6 +31,7 @@ export function registerTaskWorkspaceTools(
   server.registerTool(
     "nexus_spawn_task_workspace",
     {
+      annotations: { title: "🏗️ Spawn Workspace" },
       description: [
         "Create an isolated task workspace for a task.",
         "Selected files are copied from the real repo into an isolated directory.",
@@ -128,6 +129,7 @@ export function registerTaskWorkspaceTools(
   server.registerTool(
     "nexus_get_task_workspace",
     {
+      annotations: { title: "📂 Task Workspace" },
       description:
         "Get info about an existing task workspace (selected files, paths, created at).",
       inputSchema: {
@@ -157,6 +159,7 @@ export function registerTaskWorkspaceTools(
   server.registerTool(
     "nexus_apply_task_patch",
     {
+      annotations: { title: "🩹 Apply Patch" },
       description: [
         "Generate a unified diff of all changes made inside a task workspace",
         "and return it. The caller is responsible for applying the patch or",

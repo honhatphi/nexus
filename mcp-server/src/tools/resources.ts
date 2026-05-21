@@ -15,25 +15,30 @@ export function registerProcessFlowsTool(
   server: McpServer,
   memgraph: MemgraphClient,
 ): void {
-  server.registerTool("get_process_flows", {
-    description: "Discover execution flows through a function — traces the call chain from entry points to terminal functions. Use to understand how a function fits into larger workflows.",
-    inputSchema: {
-      function_name: z.string().describe("Function name to trace flows for."),
-      service: z
-        .string()
-        .optional()
-        .describe("Optional service name to scope the search."),
-      max_depth: z
-        .number()
-        .int()
-        .min(1)
-        .max(15)
-        .default(10)
-        .describe(
-          "Maximum traversal depth in the call graph (1–15, default 10).",
-        ),
+  server.registerTool(
+    "get_process_flows",
+    {
+      annotations: { title: "🔀 Process Flows" },
+      description:
+        "Discover execution flows through a function — traces the call chain from entry points to terminal functions. Use to understand how a function fits into larger workflows.",
+      inputSchema: {
+        function_name: z.string().describe("Function name to trace flows for."),
+        service: z
+          .string()
+          .optional()
+          .describe("Optional service name to scope the search."),
+        max_depth: z
+          .number()
+          .int()
+          .min(1)
+          .max(15)
+          .default(10)
+          .describe(
+            "Maximum traversal depth in the call graph (1–15, default 10).",
+          ),
+      },
     },
-  }, async ({ function_name, service, max_depth }) => {
+    async ({ function_name, service, max_depth }) => {
       try {
         const forwardServiceFilter = service
           ? "AND start.service = $service AND end.service = $service"
@@ -147,7 +152,8 @@ export function registerProcessFlowsTool(
           isError: true,
         };
       }
-    });
+    },
+  );
 }
 
 // ── MCP Resources ────────────────────────────────────────────

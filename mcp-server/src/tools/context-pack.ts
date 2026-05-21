@@ -19,6 +19,7 @@ export function registerContextPackTool(
   server.registerTool(
     "nexus_build_context_pack",
     {
+      annotations: { title: "📦 Build Context Pack" },
       description:
         "Build a budget-trimmed context pack for a task. Runs hybrid search against the KB, selects the most relevant files/symbols, pulls the active task ledger (if taskId provided), and returns a structured pack with a manifest and instructions. Use this as the FIRST tool call for any coding or debugging task.",
       inputSchema: {

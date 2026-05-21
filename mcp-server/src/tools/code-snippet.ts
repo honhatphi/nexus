@@ -39,6 +39,7 @@ export function registerCodeSnippetTool(
   server.registerTool(
     "nexus_get_code_snippet",
     {
+      annotations: { title: "📖 Get Code Snippet" },
       description:
         "Read a line-range excerpt from a file that is listed in the context pack manifest. Always provide contextPackId and sourceId — this enforces the manifest guard and prevents unbounded file reads. Token-capped at maxTokens (default 1500).",
       inputSchema: {

@@ -388,6 +388,122 @@ const INFRA_RULES: InfraRule[] = [
     fallbackTarget: "<subject>",
     detailTemplate: "NATS subscribe to: {target}",
   },
+
+  // ── Firebase / Flutter ─────────────────────────────────
+  // Firestore
+  {
+    pattern: /FirebaseFirestore\.instance$|FirebaseFirestore$/,
+    kind: "firebase_firestore",
+    fallbackTarget: "firestore",
+    detailTemplate: "Initializes Firestore instance",
+  },
+  {
+    pattern: /\.collection$|\.collectionGroup$/,
+    kind: "firebase_firestore",
+    targetArg: 0,
+    fallbackTarget: "<collection>",
+    detailTemplate: "Firestore collection: {target}",
+  },
+  {
+    pattern: /\.doc$|\.document$/,
+    kind: "firebase_firestore",
+    targetArg: 0,
+    fallbackTarget: "<doc>",
+    detailTemplate: "Firestore document: {target}",
+  },
+  {
+    pattern: /\.snapshots$|\.get$|\.set$|\.update$|\.delete$/,
+    kind: "firebase_firestore",
+    fallbackTarget: "firestore",
+    detailTemplate: "Firestore operation: {target}",
+  },
+
+  // Firebase Auth
+  {
+    pattern: /FirebaseAuth\.instance$|FirebaseAuth$/,
+    kind: "firebase_auth",
+    fallbackTarget: "firebase_auth",
+    detailTemplate: "Initializes Firebase Auth",
+  },
+  {
+    pattern:
+      /\.signInWithEmailAndPassword$|\.createUserWithEmailAndPassword$|\.signInAnonymously$|\.signInWithCredential$|\.signInWithPopup$|\.signOut$/,
+    kind: "firebase_auth",
+    fallbackTarget: "auth",
+    detailTemplate: "Firebase Auth operation: {target}",
+  },
+
+  // Firebase Storage
+  {
+    pattern: /FirebaseStorage\.instance$|FirebaseStorage$/,
+    kind: "firebase_storage",
+    fallbackTarget: "firebase_storage",
+    detailTemplate: "Initializes Firebase Storage",
+  },
+  {
+    pattern: /\.putFile$|\.putData$|\.putString$|\.getDownloadURL$/,
+    kind: "firebase_storage",
+    fallbackTarget: "storage",
+    detailTemplate: "Firebase Storage operation: {target}",
+  },
+
+  // Firebase Messaging (FCM)
+  {
+    pattern: /FirebaseMessaging\.instance$|FirebaseMessaging$/,
+    kind: "firebase_messaging",
+    fallbackTarget: "fcm",
+    detailTemplate: "Initializes Firebase Messaging (FCM)",
+  },
+  {
+    pattern:
+      /\.getToken$|\.subscribeToTopic$|\.unsubscribeFromTopic$|FirebaseMessaging\.onMessage$|FirebaseMessaging\.onBackgroundMessage$/,
+    kind: "firebase_messaging",
+    fallbackTarget: "fcm",
+    detailTemplate: "FCM operation: {target}",
+  },
+
+  // Firebase Realtime Database
+  {
+    pattern: /FirebaseDatabase\.instance$|FirebaseDatabase$/,
+    kind: "firebase_realtime_db",
+    fallbackTarget: "realtime_db",
+    detailTemplate: "Initializes Firebase Realtime Database",
+  },
+  {
+    pattern: /DatabaseReference$|\.onValue$|\.onChildAdded$/,
+    kind: "firebase_realtime_db",
+    fallbackTarget: "realtime_db",
+    detailTemplate: "Realtime DB operation: {target}",
+  },
+
+  // Firebase Crashlytics
+  {
+    pattern: /FirebaseCrashlytics\.instance$|FirebaseCrashlytics$/,
+    kind: "firebase_crashlytics",
+    fallbackTarget: "crashlytics",
+    detailTemplate: "Initializes Firebase Crashlytics",
+  },
+  {
+    pattern: /\.recordError$|\.recordFlutterFatalError$|\.log$/,
+    kind: "firebase_crashlytics",
+    fallbackTarget: "crashlytics",
+    detailTemplate: "Crashlytics report: {target}",
+  },
+
+  // Firebase Analytics
+  {
+    pattern: /FirebaseAnalytics\.instance$|FirebaseAnalytics$/,
+    kind: "firebase_analytics",
+    fallbackTarget: "analytics",
+    detailTemplate: "Initializes Firebase Analytics",
+  },
+  {
+    pattern: /\.logEvent$|\.setUserId$|\.setCurrentScreen$/,
+    kind: "firebase_analytics",
+    targetArg: 0,
+    fallbackTarget: "<event>",
+    detailTemplate: "Analytics event: {target}",
+  },
 ];
 
 // ── Detection ────────────────────────────────────────────────
@@ -470,6 +586,11 @@ export function detectInfraPatterns(
       });
       break; // one rule per call node
     }
+  }
+
+  // Dart: selector-based call AST — uses a separate scanner
+  if (_language === "dart") {
+    patterns.push(...detectDartFirebasePatterns(root));
   }
 
   // Deduplicate: same kind+target within the same file → keep first occurrence
@@ -567,4 +688,215 @@ function extractStringValue(node: SyntaxNode): string | null {
     return `$${node.text.trim()}`;
   }
   return null;
+}
+
+// ── Dart / Firebase pattern detection ────────────────────────
+// Dart uses a selector-chain AST (not call_expression), so Firebase APIs
+// are detected via two passes:
+//   1. argument_part scan: catch method calls (runs first so .find() returns specific patterns)
+//   2. Identifier scan: catch Firebase class name references (instance access, property refs)
+
+function detectDartFirebasePatterns(root: SyntaxNode): InfraPattern[] {
+  const patterns: InfraPattern[] = [];
+
+  // Pass 1 — Firebase method calls via argument_part reconstruction
+  // Runs FIRST so that .find() returns the more specific method-call pattern
+  const METHOD_RULES: Array<{
+    pattern: RegExp;
+    kind: InfraKind;
+    targetArg?: number;
+    fallback: string;
+    template: string;
+  }> = [
+    {
+      pattern: /\.collection$|\.collectionGroup$/,
+      kind: "firebase_firestore",
+      targetArg: 0,
+      fallback: "<collection>",
+      template: "Firestore collection: {target}",
+    },
+    {
+      pattern: /\.doc$|\.document$/,
+      kind: "firebase_firestore",
+      targetArg: 0,
+      fallback: "<doc>",
+      template: "Firestore document: {target}",
+    },
+    {
+      pattern: /\.snapshots$|\.get$|\.set$|\.update$|\.delete$/,
+      kind: "firebase_firestore",
+      fallback: "firestore",
+      template: "Firestore operation: {target}",
+    },
+    {
+      pattern:
+        /\.signInWithEmailAndPassword$|\.createUserWithEmailAndPassword$|\.signInAnonymously$|\.signOut$/,
+      kind: "firebase_auth",
+      fallback: "auth",
+      template: "Firebase Auth operation: {target}",
+    },
+    {
+      pattern: /\.putFile$|\.putData$|\.putString$|\.getDownloadURL$/,
+      kind: "firebase_storage",
+      fallback: "storage",
+      template: "Firebase Storage operation: {target}",
+    },
+    {
+      pattern: /\.getToken$|\.subscribeToTopic$|\.unsubscribeFromTopic$/,
+      kind: "firebase_messaging",
+      fallback: "fcm",
+      template: "FCM operation: {target}",
+    },
+    {
+      pattern: /\.recordError$/,
+      kind: "firebase_crashlytics",
+      fallback: "crashlytics",
+      template: "Crashlytics report: {target}",
+    },
+    {
+      pattern: /\.logEvent$|\.setUserId$|\.setCurrentScreen$/,
+      kind: "firebase_analytics",
+      targetArg: 0,
+      fallback: "<event>",
+      template: "Analytics event: {target}",
+    },
+  ];
+
+  for (const argPart of findAll(root, ["argument_part"])) {
+    const selectorNode = argPart.parent; // "selector"
+    if (!selectorNode) continue;
+    const chain = selectorNode.parent;
+    if (!chain) continue;
+
+    // Reconstruct callee: collect identifiers and unconditional_assignable_selectors
+    // in the chain before this selectorNode, skipping argument_part selectors
+    const calleeParts: string[] = [];
+    for (let i = 0; i < chain.childCount; i++) {
+      const child = chain.child(i);
+      if (!child) continue;
+      if (child.id === selectorNode.id) break;
+      if (child.type === "identifier" || child.type === "type_identifier") {
+        calleeParts.push(child.text);
+      } else if (child.type === "selector") {
+        const accessor = child.firstNamedChild;
+        if (accessor?.type === "unconditional_assignable_selector") {
+          calleeParts.push(accessor.text.trim()); // e.g. ".instance", ".collection"
+        }
+        // skip selector(argument_part) — already-called intermediate results
+      }
+    }
+    const callee = calleeParts.join("");
+    if (!callee) continue;
+
+    for (const rule of METHOD_RULES) {
+      if (!rule.pattern.test(callee)) continue;
+
+      let target = rule.fallback;
+      if (rule.targetArg === 0) {
+        const argsNode = argPart.namedChildren.find(
+          (c) => c?.type === "arguments",
+        );
+        if (argsNode) {
+          const firstArg = argsNode.namedChildren.find(
+            (c) => c?.type === "argument",
+          );
+          if (firstArg) {
+            const strNodes = findAll(firstArg, ["string_literal"]);
+            if (strNodes.length > 0) {
+              target = strNodes[0].text.replace(/^['"]|['"]$/g, "");
+            } else {
+              target = firstArg.text.trim();
+            }
+          }
+        }
+      } else {
+        // No explicit targetArg: use the method name from callee as a meaningful target
+        const method = callee.match(/\.(\w+)$/)?.[1];
+        if (method) target = method;
+      }
+
+      patterns.push({
+        kind: rule.kind,
+        target,
+        detail: rule.template.replace("{target}", target),
+        line: argPart.startPosition.row + 1,
+      });
+      break;
+    }
+  }
+
+  // Pass 2 — Firebase class identifier references (instance access, property refs)
+  const FIREBASE_IDS: Record<
+    string,
+    { kind: InfraKind; target: string; detail: string }
+  > = {
+    FirebaseFirestore: {
+      kind: "firebase_firestore",
+      target: "firestore",
+      detail: "Initializes Firestore instance",
+    },
+    FirebaseAuth: {
+      kind: "firebase_auth",
+      target: "firebase_auth",
+      detail: "Initializes Firebase Auth",
+    },
+    FirebaseStorage: {
+      kind: "firebase_storage",
+      target: "firebase_storage",
+      detail: "Initializes Firebase Storage",
+    },
+    FirebaseMessaging: {
+      kind: "firebase_messaging",
+      target: "fcm",
+      detail: "Initializes Firebase Messaging (FCM)",
+    },
+    FirebaseDatabase: {
+      kind: "firebase_realtime_db",
+      target: "realtime_db",
+      detail: "Initializes Firebase Realtime Database",
+    },
+    FirebaseCrashlytics: {
+      kind: "firebase_crashlytics",
+      target: "crashlytics",
+      detail: "Initializes Firebase Crashlytics",
+    },
+    FirebaseAnalytics: {
+      kind: "firebase_analytics",
+      target: "analytics",
+      detail: "Initializes Firebase Analytics",
+    },
+    // Additional property-access patterns (no parentheses in Dart)
+    DatabaseReference: {
+      kind: "firebase_realtime_db",
+      target: "realtime_db",
+      detail: "Realtime DB reference",
+    },
+    onValue: {
+      kind: "firebase_realtime_db",
+      target: "realtime_db",
+      detail: "Realtime DB stream: onValue",
+    },
+    onChildAdded: {
+      kind: "firebase_realtime_db",
+      target: "realtime_db",
+      detail: "Realtime DB stream: onChildAdded",
+    },
+    recordFlutterFatalError: {
+      kind: "firebase_crashlytics",
+      target: "crashlytics",
+      detail: "Crashlytics: Flutter fatal error handler",
+    },
+  };
+
+  const seenId = new Set<string>(); // deduplicate per kind+line
+  for (const id of findAll(root, ["identifier"])) {
+    const info = FIREBASE_IDS[id.text];
+    if (!info) continue;
+    const key = `${info.kind}:${id.startPosition.row}`;
+    if (seenId.has(key)) continue;
+    seenId.add(key);
+    patterns.push({ ...info, line: id.startPosition.row + 1 });
+  }
+
+  return patterns;
 }
