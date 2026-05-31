@@ -16,6 +16,7 @@ import {
   resolveWorkspaceView,
   syncCurrentRepoView,
 } from "../utils/safe-response.js";
+import { syncJobs, MAX_STORED_JOBS } from "./sync-service.js";
 
 export function registerWorkspaceTools(
   server: McpServer,
@@ -262,11 +263,61 @@ export function registerWorkspaceTools(
           }
         }
 
-        // Run sync/index
-        const syncResult = await indexer.sync({
-          serviceId: detected.repoId,
-          servicePath: detected.repoRoot,
-          forceUpdate: force_update,
+        // Run sync/index in background — returns a job ID immediately.
+        // Callers should poll nexus_sync_status(job_id) for progress.
+        const jobId = `repo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const startedAt = Date.now();
+
+        syncJobs.set(jobId, {
+          status: "running",
+          service: detected.repoId,
+          path: detected.repoRoot,
+          startedAt,
+        });
+
+        // Evict oldest jobs once we exceed the cap
+        if (syncJobs.size > MAX_STORED_JOBS) {
+          const oldest = Array.from(syncJobs.entries()).sort(
+            (a, b) => a[1].startedAt - b[1].startedAt,
+          )[0];
+          if (oldest) syncJobs.delete(oldest[0]);
+        }
+
+        setImmediate(() => {
+          void (async () => {
+            try {
+              const syncResult = await indexer.sync({
+                serviceId: detected.repoId,
+                servicePath: detected.repoRoot,
+                forceUpdate: force_update,
+              });
+
+              syncJobs.set(jobId, {
+                status: "done",
+                service: detected.repoId,
+                path: detected.repoRoot,
+                startedAt,
+                completedAt: Date.now(),
+                filesTotal: syncResult.filesScanned,
+                filesChanged: syncResult.filesChanged,
+                symbolsIndexed: syncResult.symbolsIndexed,
+                durationMs: syncResult.durationMs,
+                summary: `Indexed ${syncResult.symbolsIndexed} symbols, ${syncResult.vectorsUpserted} vectors from ${syncResult.filesChanged} changed files`,
+              });
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              console.error(
+                `[nexus_sync_current_repo] Job ${jobId} failed:`,
+                message,
+              );
+              syncJobs.set(jobId, {
+                ...syncJobs.get(jobId)!,
+                status: "error",
+                completedAt: Date.now(),
+                error: message,
+              });
+            }
+          })();
         });
 
         return mcpJson(
@@ -276,7 +327,7 @@ export function registerWorkspaceTools(
             detected.branch,
             detected.commit,
             addedToManifest,
-            syncResult,
+            jobId,
             debug,
           ),
         );

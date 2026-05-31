@@ -21,7 +21,7 @@ export function registerContextPackTool(
     {
       annotations: { title: "📦 Build Context Pack" },
       description:
-        "Build a budget-trimmed context pack for a task. Runs hybrid search against the KB, selects the most relevant files/symbols, pulls the active task ledger (if taskId provided), and returns a structured pack with a manifest and instructions. Use this as the FIRST tool call for any coding or debugging task.",
+        "Build a budget-trimmed context pack for a task. Runs hybrid search against the KB, selects the most relevant files/symbols, pulls the active task ledger (if taskId provided), and returns a structured pack with a manifest and instructions. Use this as the FIRST tool call for any coding or debugging task. IMPORTANT: If the response instructions contain 'STOP' or status=kb_empty, you MUST call nexus_sync_current_repo first and retry — do NOT read files directly.",
       inputSchema: {
         workspace_id: z
           .string()

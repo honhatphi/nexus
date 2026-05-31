@@ -91,7 +91,7 @@ export function syncCurrentRepoView(
   branch: string | null | undefined,
   commit: string | null | undefined,
   addedToManifest: boolean,
-  syncResult: unknown,
+  jobId: string,
   debug = false,
 ): Record<string, unknown> {
   return {
@@ -102,6 +102,9 @@ export function syncCurrentRepoView(
       commit,
       addedToManifest,
     },
-    sync: syncResult,
+    jobId,
+    status: "running",
+    message:
+      "Sync started in background. Poll with nexus_sync_status(job_id) to check progress.",
   };
 }
