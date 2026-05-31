@@ -46,10 +46,12 @@ function toVectorClient(chromadb: ChromaDBClient): VectorClient {
 // ── Background job store ─────────────────────────────────────
 // Module-level: persists across HTTP connections.
 // (index.ts creates a fresh McpServer per request, but module scope is shared.)
+// Exported so workspace.ts (nexus_sync_current_repo) can push jobs here too,
+// making nexus_sync_status the single polling endpoint for all sync jobs.
 
-type SyncJobStatus = "running" | "done" | "error";
+export type SyncJobStatus = "running" | "done" | "error";
 
-interface SyncJob {
+export interface SyncJob {
   status: SyncJobStatus;
   service: string;
   path: string;
@@ -68,8 +70,8 @@ interface SyncJob {
   error?: string;
 }
 
-const syncJobs = new Map<string, SyncJob>();
-const MAX_STORED_JOBS = 50;
+export const syncJobs = new Map<string, SyncJob>();
+export const MAX_STORED_JOBS = 50;
 
 // ── Shared pipeline (stateless after registration) ───────────
 // Phases are pure functions; PipelineEngine has no mutable state after

@@ -226,7 +226,7 @@ describe("resolveWorkspaceView", () => {
 // ── syncCurrentRepoView ───────────────────────────────────────
 
 describe("syncCurrentRepoView", () => {
-  const syncResult = { indexed: 12, skipped: 0 };
+  const JOB_ID = "repo_123_abc";
 
   it("debug=false: does not contain repoRoot", () => {
     const result = syncCurrentRepoView(
@@ -235,7 +235,7 @@ describe("syncCurrentRepoView", () => {
       "main",
       "abc123",
       false,
-      syncResult,
+      JOB_ID,
       false,
     );
     const repo = result.repo as Record<string, unknown>;
@@ -250,14 +250,15 @@ describe("syncCurrentRepoView", () => {
       "main",
       "abc123",
       false,
-      syncResult,
+      JOB_ID,
       false,
     );
     const repo = result.repo as Record<string, unknown>;
     expect(repo).toHaveProperty("repoId", "my-repo");
     expect(repo).toHaveProperty("branch", "main");
     expect(repo).toHaveProperty("commit", "abc123");
-    expect(result).toHaveProperty("sync");
+    expect(result).toHaveProperty("jobId", JOB_ID);
+    expect(result).toHaveProperty("status", "running");
   });
 
   it("debug=true: includes repoRoot", () => {
@@ -267,7 +268,7 @@ describe("syncCurrentRepoView", () => {
       "main",
       "abc123",
       false,
-      syncResult,
+      JOB_ID,
       true,
     );
     const repo = result.repo as Record<string, unknown>;
@@ -282,7 +283,7 @@ describe("syncCurrentRepoView", () => {
       null,
       null,
       false,
-      syncResult,
+      JOB_ID,
       false,
     );
     const repo = result.repo as Record<string, unknown>;

@@ -21,11 +21,26 @@ import { ContextSectionRenderer } from "./context-section-renderer.js";
 import { estimateTokens } from "../budget/token-estimator.js";
 
 const DEFAULT_MAX_FILES = 8;
+
+// Instructions injected into every context pack.
+// Keep these authoritative — the agent MUST follow them.
 const INSTRUCTIONS: string[] = [
-  "Use this context pack before reading additional files.",
-  "Call nexus_get_code_snippet only for items listed in the manifest.",
+  "RULE: Do NOT read files directly using file read tools. Use nexus_get_code_snippet for items in the manifest only.",
+  "RULE: Do NOT search the filesystem with grep/find/rg. The KB is your only source of code context.",
+  "If this pack has status=kb_empty, run nexus_sync_current_repo first and retry nexus_build_context_pack. Do NOT proceed.",
+  "Call nexus_get_code_snippet only for items listed in the manifest (guarded by manifest ID).",
   "Update ledger after each meaningful step with nexus_update_ledger.",
   "Store large outputs (logs, diffs) with nexus_store_artifact.",
+];
+
+// Instructions returned when KB has no data for the workspace.
+// These BLOCK the agent from doing anything until the repo is synced.
+const KB_EMPTY_INSTRUCTIONS: string[] = [
+  "STOP. The Knowledge Base has NO data for this workspace.",
+  "REQUIRED: Call nexus_sync_current_repo with the repo path to index it first.",
+  "After sync job completes (poll nexus_sync_status), call nexus_build_context_pack again.",
+  "DO NOT read files, grep, or search the filesystem. Wait for KB to be populated.",
+  "DO NOT attempt to answer the task until this context pack returns manifest items.",
 ];
 
 export class ContextPackBuilder {
@@ -165,7 +180,16 @@ export class ContextPackBuilder {
       }
     }
 
-    // ── Phase 6: Persist context pack locally ────────────────
+    // ── Phase 6: Detect KB empty state ───────────────────────
+    // manifest contains only ledger items if search+repoCapsule both returned
+    // nothing — the KB has no vectors/graph nodes for this workspace yet.
+    // Return blocking instructions so the agent stops and syncs first.
+    const nonLedgerItems = manifest.filter((m) => m.type !== "ledger");
+    const kbEmpty = nonLedgerItems.length === 0;
+
+    const finalInstructions = kbEmpty ? KB_EMPTY_INSTRUCTIONS : INSTRUCTIONS;
+
+    // ── Phase 7: Persist context pack locally ────────────────
     const packId = `ctxpack_${randomUUID().slice(0, 8)}`;
     const pack: ContextPack = {
       id: packId,
@@ -176,9 +200,28 @@ export class ContextPackBuilder {
       budget,
       estimatedTokens: usedTokens,
       manifest,
-      sections,
+      sections: kbEmpty
+        ? [
+            {
+              id: "kb_empty_warning",
+              title: "⚠️ KB Empty — Sync Required",
+              content: [
+                `The Knowledge Base has no indexed data for workspace: ${input.workspaceId}`,
+                ``,
+                `To fix:`,
+                `1. Call nexus_sync_current_repo with the repo path (e.g. cwd: "/path/to/repo")`,
+                `2. Poll nexus_sync_status with the returned jobId until status=done`,
+                `3. Call nexus_build_context_pack again with the same task`,
+                ``,
+                `Do NOT read source files directly while waiting.`,
+              ].join("\n"),
+              estimatedTokens: 60,
+            },
+            ...sections,
+          ]
+        : sections,
       artifacts: [],
-      instructions: INSTRUCTIONS,
+      instructions: finalInstructions,
       createdAt: new Date().toISOString(),
     };
     await this.store.save(input.workspaceId, pack);

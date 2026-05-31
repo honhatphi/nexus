@@ -489,112 +489,172 @@ async function upsertDagsToGraph(
   serviceName: string,
   parseResult: ParseResult,
 ): Promise<{ nodesUpserted: number; relsCreated: number }> {
+  if (parseResult.dags.length === 0) {
+    return { nodesUpserted: 0, relsCreated: 0 };
+  }
+
   let nodesUpserted = 0;
   let relsCreated = 0;
 
+  // ── Batch: all DAG nodes + Service/File edges in one UNWIND ──
+  const dagRows = parseResult.dags.map((dag) => ({
+    dagName: dag.name,
+    service: serviceName,
+    file: parseResult.file,
+    schedule: dag.scheduleInterval ?? "",
+    description: dag.description ?? "",
+    owner: dag.owner ?? "",
+    concurrency: dag.concurrency ?? 0,
+    language: parseResult.language,
+  }));
+
+  await graph.write(
+    `UNWIND $dags AS d
+     MERGE (dag:DAG {name: d.dagName, service: d.service})
+     SET dag.file             = d.file,
+         dag.scheduleInterval = d.schedule,
+         dag.description      = d.description,
+         dag.owner            = d.owner,
+         dag.concurrency      = d.concurrency,
+         dag.updatedAt        = timestamp()
+     WITH dag, d
+     MERGE (s:Service {name: d.service})
+     MERGE (s)-[:CONTAINS]->(dag)`,
+    { dags: dagRows },
+  );
+  nodesUpserted += dagRows.length;
+
+  // File node — only one write per parseResult (not per DAG)
+  await graph.write(
+    `MERGE (fi:File {path: $file})
+     MERGE (s:Service {name: $service})
+     MERGE (fi)-[:BELONGS_TO]->(s)
+     SET fi.language = $language, fi.updatedAt = timestamp()`,
+    {
+      file: parseResult.file,
+      service: serviceName,
+      language: parseResult.language,
+    },
+  );
+
+  // ── Collect Task/dep/invokes rows across all DAGs ─────────────
+  type TaskRow = {
+    taskName: string;
+    dagName: string;
+    service: string;
+    operator: string;
+    pyFile: string;
+    pyName: string;
+    bashCmd: string;
+    sql: string;
+    pgConnId: string;
+    retries: number;
+    timeout: number;
+    file: string;
+  };
+  type DepRow = {
+    taskName: string;
+    dagName: string;
+    service: string;
+    depName: string;
+  };
+  type InvokesRow = {
+    taskName: string;
+    dagName: string;
+    service: string;
+    funcName: string;
+    pyFile: string;
+  };
+
+  const taskRows: TaskRow[] = [];
+  const depRows: DepRow[] = [];
+  const invokesRows: InvokesRow[] = [];
+
   for (const dag of parseResult.dags) {
-    await graph.write(
-      `MERGE (d:DAG {name: $dagName, service: $service})
-       SET d.file            = $file,
-           d.scheduleInterval = $schedule,
-           d.description     = $description,
-           d.owner           = $owner,
-           d.concurrency     = $concurrency,
-           d.updatedAt       = timestamp()
-       WITH d
-       MERGE (s:Service {name: $service})
-       MERGE (s)-[:CONTAINS]->(d)`,
-      {
+    for (const task of dag.tasks) {
+      taskRows.push({
+        taskName: task.name,
         dagName: dag.name,
         service: serviceName,
+        operator: task.operator,
+        pyFile: task.pythonCallableFile ?? "",
+        pyName: task.pythonCallableName ?? "",
+        bashCmd: task.bashCommand ?? "",
+        sql: task.sql ?? "",
+        pgConnId: task.postgresConnId ?? "",
+        retries: task.retries ?? 0,
+        timeout: task.executionTimeoutSecs ?? 0,
         file: parseResult.file,
-        schedule: dag.scheduleInterval ?? "",
-        description: dag.description ?? "",
-        owner: dag.owner ?? "",
-        concurrency: dag.concurrency ?? 0,
-      },
-    );
-    nodesUpserted++;
+      });
 
-    // File node
-    await graph.write(
-      `MERGE (fi:File {path: $file})
-       MERGE (s:Service {name: $service})
-       MERGE (fi)-[:BELONGS_TO]->(s)
-       SET fi.language = $language, fi.updatedAt = timestamp()`,
-      {
-        file: parseResult.file,
-        service: serviceName,
-        language: parseResult.language,
-      },
-    );
-
-    for (const task of dag.tasks) {
-      await graph.write(
-        `MERGE (t:Task {name: $taskName, dag: $dagName, service: $service})
-         SET t.operator              = $operator,
-             t.pythonCallableFile    = $pyFile,
-             t.pythonCallableName    = $pyName,
-             t.bashCommand           = $bashCmd,
-             t.sql                   = $sql,
-             t.postgresConnId        = $pgConnId,
-             t.retries               = $retries,
-             t.executionTimeoutSecs  = $timeout,
-             t.file                  = $file,
-             t.updatedAt             = timestamp()
-         WITH t
-         MERGE (d:DAG {name: $dagName, service: $service})
-         MERGE (t)-[:BELONGS_TO]->(d)`,
-        {
+      for (const dep of task.dependencies) {
+        depRows.push({
           taskName: task.name,
           dagName: dag.name,
           service: serviceName,
-          operator: task.operator,
-          pyFile: task.pythonCallableFile ?? "",
-          pyName: task.pythonCallableName ?? "",
-          bashCmd: task.bashCommand ?? "",
-          sql: task.sql ?? "",
-          pgConnId: task.postgresConnId ?? "",
-          retries: task.retries ?? 0,
-          timeout: task.executionTimeoutSecs ?? 0,
-          file: parseResult.file,
-        },
-      );
-      nodesUpserted++;
-
-      for (const dep of task.dependencies) {
-        await graph.write(
-          `MERGE (t:Task {name: $taskName, dag: $dagName, service: $service})
-           MERGE (upstream:Task {name: $depName, dag: $dagName, service: $service})
-           MERGE (t)-[r:DEPENDS_ON]->(upstream)
-           SET r.updatedAt = timestamp()`,
-          {
-            taskName: task.name,
-            dagName: dag.name,
-            service: serviceName,
-            depName: dep,
-          },
-        );
-        relsCreated++;
+          depName: dep,
+        });
       }
 
       if (task.pythonCallableName) {
-        await graph.write(
-          `MERGE (t:Task {name: $taskName, dag: $dagName, service: $service})
-           MERGE (f:Function {name: $funcName})
-           MERGE (t)-[r:INVOKES]->(f)
-           SET r.callableFile = $pyFile, r.updatedAt = timestamp()`,
-          {
-            taskName: task.name,
-            dagName: dag.name,
-            service: serviceName,
-            funcName: task.pythonCallableName,
-            pyFile: task.pythonCallableFile ?? "",
-          },
-        );
-        relsCreated++;
+        invokesRows.push({
+          taskName: task.name,
+          dagName: dag.name,
+          service: serviceName,
+          funcName: task.pythonCallableName,
+          pyFile: task.pythonCallableFile ?? "",
+        });
       }
     }
+  }
+
+  // ── Batch: all Task nodes in one UNWIND write ─────────────────
+  if (taskRows.length > 0) {
+    await graph.write(
+      `UNWIND $tasks AS t
+       MERGE (task:Task {name: t.taskName, dag: t.dagName, service: t.service})
+       SET task.operator             = t.operator,
+           task.pythonCallableFile   = t.pyFile,
+           task.pythonCallableName   = t.pyName,
+           task.bashCommand          = t.bashCmd,
+           task.sql                  = t.sql,
+           task.postgresConnId       = t.pgConnId,
+           task.retries              = t.retries,
+           task.executionTimeoutSecs = t.timeout,
+           task.file                 = t.file,
+           task.updatedAt            = timestamp()
+       WITH task, t
+       MERGE (d:DAG {name: t.dagName, service: t.service})
+       MERGE (task)-[:BELONGS_TO]->(d)`,
+      { tasks: taskRows },
+    );
+    nodesUpserted += taskRows.length;
+  }
+
+  // ── Batch: all DEPENDS_ON edges in one UNWIND write ───────────
+  if (depRows.length > 0) {
+    await graph.write(
+      `UNWIND $deps AS d
+       MERGE (t:Task {name: d.taskName, dag: d.dagName, service: d.service})
+       MERGE (upstream:Task {name: d.depName, dag: d.dagName, service: d.service})
+       MERGE (t)-[r:DEPENDS_ON]->(upstream)
+       SET r.updatedAt = timestamp()`,
+      { deps: depRows },
+    );
+    relsCreated += depRows.length;
+  }
+
+  // ── Batch: all INVOKES edges in one UNWIND write ──────────────
+  if (invokesRows.length > 0) {
+    await graph.write(
+      `UNWIND $invokes AS iv
+       MERGE (t:Task {name: iv.taskName, dag: iv.dagName, service: iv.service})
+       MERGE (f:Function {name: iv.funcName})
+       MERGE (t)-[r:INVOKES]->(f)
+       SET r.callableFile = iv.pyFile, r.updatedAt = timestamp()`,
+      { invokes: invokesRows },
+    );
+    relsCreated += invokesRows.length;
   }
 
   return { nodesUpserted, relsCreated };
