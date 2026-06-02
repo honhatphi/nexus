@@ -14,6 +14,7 @@ import {
   findAll,
   extractCalls,
   extractDocstring,
+  ancestorName,
 } from "../ast-helpers.js";
 
 export function extractJava(root: SyntaxNode): SymbolInfo[] {
@@ -46,6 +47,9 @@ export function extractJava(root: SyntaxNode): SymbolInfo[] {
 
     return {
       name: textOf(nameNode),
+      className: isMethod
+        ? ancestorName(node, ["class_declaration", "interface_declaration"])
+        : null,
       kind: isMethod ? ("method" as SymbolKind) : ("function" as SymbolKind),
       params,
       returnType: textOf(returnNode) || null,

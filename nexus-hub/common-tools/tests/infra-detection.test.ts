@@ -114,7 +114,7 @@ def fetch_config():
 });
 
 describe("Infrastructure Detection — deduplication", () => {
-  it("deduplicates same kind+target across multiple calls", async () => {
+  it("keeps same kind+target occurrences on different lines", async () => {
     const py = `
 def multi_send():
     producer.produce("events", msg1)
@@ -125,7 +125,7 @@ def multi_send():
     const kafkaPats = result.infraPatterns.filter(
       (p) => p.kind === "kafka_produce" && p.target === "events",
     );
-    expect(kafkaPats.length).toBe(1); // deduplicated
+    expect(kafkaPats.length).toBe(3);
   });
 });
 

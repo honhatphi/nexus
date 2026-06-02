@@ -14,7 +14,15 @@ import {
   findAll,
   extractCalls,
   extractDocstring,
+  ancestorName,
 } from "../ast-helpers.js";
+
+const CSHARP_CONTAINER_TYPES = [
+  "class_declaration",
+  "struct_declaration",
+  "record_declaration",
+  "interface_declaration",
+];
 
 export function extractCSharp(root: SyntaxNode): SymbolInfo[] {
   const funcNodes = findAll(root, [
@@ -39,10 +47,12 @@ export function extractCSharp(root: SyntaxNode): SymbolInfo[] {
 
     const isMethod =
       node.parent?.type === "declaration_list" &&
-      node.parent.parent?.type === "class_declaration";
+      !!node.parent.parent &&
+      CSHARP_CONTAINER_TYPES.includes(node.parent.parent.type);
 
     return {
       name: textOf(nameNode),
+      className: isMethod ? ancestorName(node, CSHARP_CONTAINER_TYPES) : null,
       kind: isMethod ? ("method" as SymbolKind) : ("function" as SymbolKind),
       params,
       returnType: textOf(returnNode) || null,
@@ -57,6 +67,8 @@ export function extractCSharp(root: SyntaxNode): SymbolInfo[] {
 export function extractCSharpClasses(root: SyntaxNode): ClassInfo[] {
   const classNodes = findAll(root, [
     "class_declaration",
+    "struct_declaration",
+    "record_declaration",
     "interface_declaration",
   ]);
   return classNodes.map((node) => {

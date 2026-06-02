@@ -10,6 +10,7 @@ import {
   extractCalls,
   resolveKind,
   extractDocstring,
+  ancestorName,
 } from "../ast-helpers.js";
 
 export function extractPHP(root: SyntaxNode): SymbolInfo[] {
@@ -35,6 +36,10 @@ export function extractPHP(root: SyntaxNode): SymbolInfo[] {
 
     return {
       name: textOf(nameNode),
+      className:
+        node.type === "method_declaration"
+          ? ancestorName(node, ["class_declaration", "interface_declaration"])
+          : null,
       kind: resolveKind(node.type),
       params,
       returnType: textOf(returnNode) || null,

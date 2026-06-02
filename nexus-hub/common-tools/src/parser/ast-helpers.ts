@@ -49,6 +49,7 @@ export function extractCalls(body: SyntaxNode): FunctionCall[] {
   ]);
   const calls: FunctionCall[] = [];
   for (const node of callNodes) {
+    if (isInsideNestedFunction(node, body)) continue;
     const fn = node.childForFieldName("function") ?? node.firstChild;
     if (fn) {
       calls.push({
@@ -58,6 +59,49 @@ export function extractCalls(body: SyntaxNode): FunctionCall[] {
     }
   }
   return calls;
+}
+
+const FUNCTION_BOUNDARY_TYPES = new Set([
+  "function_declaration",
+  "function_definition",
+  "method_declaration",
+  "method_definition",
+  "constructor_declaration",
+  "arrow_function",
+  "lambda",
+  "local_function_statement",
+]);
+
+function isInsideNestedFunction(
+  node: SyntaxNode,
+  boundary: SyntaxNode,
+): boolean {
+  let current = node.parent;
+  while (current && current !== boundary) {
+    if (FUNCTION_BOUNDARY_TYPES.has(current.type)) return true;
+    current = current.parent;
+  }
+  return false;
+}
+
+export function findAncestor(
+  node: SyntaxNode,
+  types: readonly string[],
+): SyntaxNode | null {
+  let current = node.parent;
+  while (current) {
+    if (types.includes(current.type)) return current;
+    current = current.parent;
+  }
+  return null;
+}
+
+export function ancestorName(
+  node: SyntaxNode,
+  types: readonly string[],
+): string | null {
+  const ancestor = findAncestor(node, types);
+  return textOf(ancestor?.childForFieldName("name") ?? null) || null;
 }
 
 // ── Kind resolution ──────────────────────────────────────────

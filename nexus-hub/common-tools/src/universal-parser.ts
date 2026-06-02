@@ -11,6 +11,7 @@
 
 import path from "node:path";
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import { Parser, Language } from "web-tree-sitter";
 import type { SupportedLanguage, ParseResult } from "./types.js";
 import { EXTENSION_MAP, toLegacyFunctionInfo } from "./types.js";
@@ -28,6 +29,12 @@ import { parseYamlDag } from "./parser/yaml-dag.js";
 // ─────────────────────────────────────────────────────────────
 // CodeParser
 // ─────────────────────────────────────────────────────────────
+
+// createRequire is used here instead of the global `require` so that:
+// (a) the intent is explicit and visible to linters, and
+// (b) the call site is trivially migrated to ESM by swapping __filename
+//     for import.meta.url when/if this package gains "type": "module".
+const _require = createRequire(__filename);
 
 export class CodeParser {
   private static initPromise: Promise<void> | null = null;
@@ -60,7 +67,7 @@ export class CodeParser {
     if (cached) return cached;
 
     const wasmDir = path.dirname(
-      require.resolve("tree-sitter-wasms/package.json"),
+      _require.resolve("tree-sitter-wasms/package.json"),
     );
     const wasmPath = path.join(wasmDir, "out", CodeParser.WASM_FILES[lang]);
 

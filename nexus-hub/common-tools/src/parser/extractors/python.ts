@@ -14,6 +14,7 @@ import {
   findAll,
   extractCalls,
   extractDocstring,
+  ancestorName,
 } from "../ast-helpers.js";
 
 export function extractPython(root: SyntaxNode): SymbolInfo[] {
@@ -50,6 +51,7 @@ export function extractPython(root: SyntaxNode): SymbolInfo[] {
 
     return {
       name: textOf(nameNode),
+      className: isMethod ? ancestorName(node, ["class_definition"]) : null,
       kind: isMethod ? ("method" as SymbolKind) : ("function" as SymbolKind),
       params,
       returnType: textOf(returnNode) || null,

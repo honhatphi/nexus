@@ -101,13 +101,19 @@ export class SyncServiceKnowledge {
 
     // ── ChromaDB ──
     // Use `path` constructor (chromadb 3.x) — `ssl/host/port` is deprecated
-    // and routes to a different base URL causing 404s with server 1.4.x
+    // and routes to a different base URL causing 404s with server 1.4.x.
+    // Bearer token auth is passed via fetchOptions.headers so the type is
+    // correct (RequestInit) and no `as` cast is needed.
     this.chromaClient = new ChromaClient({
       path: config.chromadb.url,
       ...(config.chromadb.token
-        ? { auth: { provider: "token", credentials: config.chromadb.token } }
+        ? {
+            fetchOptions: {
+              headers: { Authorization: `Bearer ${config.chromadb.token}` },
+            },
+          }
         : {}),
-    } as ConstructorParameters<typeof ChromaClient>[0]);
+    });
     this.collectionName = config.chromadb.collection ?? "nexus_code";
 
     // ── Parser ──

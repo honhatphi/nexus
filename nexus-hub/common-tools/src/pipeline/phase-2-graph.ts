@@ -27,6 +27,12 @@ function buildSignature(sym: SymbolInfo): string {
   return `${sym.name}(${params})${ret}`;
 }
 
+function graphSymbolName(sym: SymbolInfo): string {
+  return sym.kind === "method" && sym.className
+    ? `${sym.className}.${sym.name}`
+    : sym.name;
+}
+
 function buildFunctionSignature(fn: FunctionInfo): string {
   const params = fn.parameters
     .map((p) => (p.type ? `${p.name}: ${p.type}` : p.name))
@@ -99,7 +105,9 @@ async function upsertSymbolsToGraph(
   // ── Batch: all Function nodes in one UNWIND write ────────
   // Reduces N individual Memgraph round-trips to 1 per file.
   const symbolRows = parseResult.symbols.map((sym) => ({
-    name: sym.name,
+    name: graphSymbolName(sym),
+    displayName: sym.name,
+    className: sym.className ?? "",
     file: parseResult.file,
     service: serviceName,
     kind: sym.kind,
@@ -124,6 +132,8 @@ async function upsertSymbolsToGraph(
          f.startLine   = sym.startLine,
          f.endLine     = sym.endLine,
          f.signature   = sym.signature,
+         f.displayName = sym.displayName,
+         f.className   = sym.className,
          f.docstring   = sym.docstring
      WITH f, sym
      MERGE (fi:File {path: sym.file, service: sym.service})
@@ -138,44 +148,74 @@ async function upsertSymbolsToGraph(
     callerFile: string;
     service: string;
     calleeName: string;
+    calleeFile?: string;
     line: number;
     confidence: number;
     reason: string;
   };
-  const callRows: CallRow[] = [];
+  const resolvedCallRows: CallRow[] = [];
+  const unresolvedCallRows: CallRow[] = [];
 
   for (const sym of parseResult.symbols) {
     for (const call of sym.calls) {
+      const matchingSymbols = parseResult.symbols.filter(
+        (candidate) => candidate.name === call.name,
+      );
+      const resolvedSameFile =
+        matchingSymbols.length === 1 ? matchingSymbols[0] : null;
       const { confidence, reason } = computeCallConfidence(
         parseResult.file,
         call.name,
         parseResult,
       );
-      callRows.push({
-        callerName: sym.name,
+      const row: CallRow = {
+        callerName: graphSymbolName(sym),
         callerFile: parseResult.file,
         service: serviceName,
-        calleeName: call.name,
+        calleeName: resolvedSameFile
+          ? graphSymbolName(resolvedSameFile)
+          : call.name,
+        calleeFile: resolvedSameFile ? parseResult.file : undefined,
         line: call.line,
         confidence,
         reason,
-      });
+      };
+      if (resolvedSameFile) {
+        resolvedCallRows.push(row);
+      } else {
+        unresolvedCallRows.push(row);
+      }
     }
   }
 
-  if (callRows.length > 0) {
+  if (resolvedCallRows.length > 0) {
     await graph.write(
       `UNWIND $calls AS c
        MERGE (caller:Function {name: c.callerName, file: c.callerFile, service: c.service})
-       MERGE (callee:Function {name: c.calleeName})
+       MERGE (callee:Function {name: c.calleeName, file: c.calleeFile, service: c.service})
        MERGE (caller)-[r:CALLS]->(callee)
        SET r.line = c.line,
            r.confidence = c.confidence,
            r.reason = c.reason,
            r.updatedAt = timestamp()`,
-      { calls: callRows },
+      { calls: resolvedCallRows },
     );
-    relsCreated += callRows.length;
+    relsCreated += resolvedCallRows.length;
+  }
+
+  if (unresolvedCallRows.length > 0) {
+    await graph.write(
+      `UNWIND $calls AS c
+       MERGE (caller:Function {name: c.callerName, file: c.callerFile, service: c.service})
+       MERGE (callee:FunctionRef {name: c.calleeName, service: c.service})
+       MERGE (caller)-[r:CALLS]->(callee)
+       SET r.line = c.line,
+           r.confidence = c.confidence,
+           r.reason = c.reason,
+           r.updatedAt = timestamp()`,
+      { calls: unresolvedCallRows },
+    );
+    relsCreated += unresolvedCallRows.length;
   }
 
   return { nodesUpserted, relsCreated };
@@ -682,16 +722,15 @@ export const graphUpsertPhase: PipelinePhase = {
           ctx.stats.totalDagRels += dagResult.relsCreated;
         }
 
-        // Symbols
-        if (parseResult.symbols.length > 0) {
-          const graphResult = await upsertSymbolsToGraph(
-            deps.graph,
-            ctx.serviceName,
-            parseResult,
-          );
-          ctx.stats.totalSymbols += graphResult.nodesUpserted;
-          ctx.stats.totalRelationships += graphResult.relsCreated;
-        }
+        // Symbols. Always run this phase so File nodes are represented even
+        // for barrel/config/type-only files that parse to zero symbols.
+        const graphResult = await upsertSymbolsToGraph(
+          deps.graph,
+          ctx.serviceName,
+          parseResult,
+        );
+        ctx.stats.totalSymbols += graphResult.nodesUpserted;
+        ctx.stats.totalRelationships += graphResult.relsCreated;
 
         // Classes & Infrastructure
         if (

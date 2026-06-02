@@ -117,6 +117,8 @@ export interface ClassInfo {
 export interface SymbolInfo {
   /** Symbol name (e.g. "handleRequest", "PaymentService.charge"). */
   name: string;
+  /** Parent class/receiver name for methods, when the language exposes one. */
+  className?: string | null;
   /** What kind of symbol this is. */
   kind: SymbolKind;
   /** Ordered list of parameters with optional type annotations. */

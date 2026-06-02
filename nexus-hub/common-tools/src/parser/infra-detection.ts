@@ -593,10 +593,10 @@ export function detectInfraPatterns(
     patterns.push(...detectDartFirebasePatterns(root));
   }
 
-  // Deduplicate: same kind+target within the same file → keep first occurrence
+  // Deduplicate only exact duplicate detections from the same AST call.
   const seen = new Set<string>();
   return patterns.filter((p) => {
-    const key = `${p.kind}::${p.target}`;
+    const key = `${p.kind}::${p.target}::${p.line}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

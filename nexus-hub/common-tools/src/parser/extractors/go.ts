@@ -35,6 +35,7 @@ export function extractGo(root: SyntaxNode): SymbolInfo[] {
 
     return {
       name: textOf(nameNode),
+      className: receiverTypeName(node),
       kind: resolveKind(node.type),
       params,
       returnType: textOf(resultNode) || null,
@@ -44,4 +45,12 @@ export function extractGo(root: SyntaxNode): SymbolInfo[] {
       endLine: node.endPosition.row + 1,
     };
   });
+}
+
+function receiverTypeName(node: SyntaxNode): string | null {
+  if (node.type !== "method_declaration") return null;
+  const receiver = node.childForFieldName("receiver");
+  if (!receiver) return null;
+  const match = receiver.text.match(/[A-Za-z_][A-Za-z0-9_]*\)?\s*$/);
+  return match?.[0].replace(/\)$/, "") ?? null;
 }

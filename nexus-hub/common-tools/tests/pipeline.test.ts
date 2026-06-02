@@ -10,12 +10,14 @@ import os from "node:os";
 import { PipelineEngine } from "../src/pipeline/index.js";
 import { filesystemPhase } from "../src/pipeline/phase-0-filesystem.js";
 import { parsePhase } from "../src/pipeline/phase-1-parse.js";
+import { graphUpsertPhase } from "../src/pipeline/phase-2-graph.js";
 import { createEmptyContext } from "../src/pipeline/types.js";
 import type {
   PipelineDeps,
   GraphClient,
   VectorClient,
 } from "../src/pipeline/types.js";
+import type { ParseResult } from "../src/types.js";
 import { CodeParser } from "../src/universal-parser.js";
 
 // ── Mock clients ─────────────────────────────────────────────
@@ -235,6 +237,97 @@ describe("Phase 1 — Parse", () => {
     }
     expect(totalSymbols).toBeGreaterThanOrEqual(3); // handle_request, post, validate
     expect(totalClasses).toBeGreaterThanOrEqual(1); // RequestHandler
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// Graph Upsert Phase
+// ─────────────────────────────────────────────────────────────
+
+describe("Phase 2 — Graph Upsert", () => {
+  function baseParseResult(overrides: Partial<ParseResult>): ParseResult {
+    return {
+      file: "test-service/index.ts",
+      language: "typescript",
+      symbols: [],
+      functions: [],
+      classes: [],
+      infraPatterns: [],
+      dags: [],
+      parseErrors: [],
+      ...overrides,
+    };
+  }
+
+  it("upserts File nodes even when a parsed file has no symbols", async () => {
+    const ctx = createEmptyContext("test-service", servicePath, true);
+    ctx.parseResults.set(
+      "/tmp/index.ts",
+      baseParseResult({ file: "test-service/index.ts" }),
+    );
+    const graph = createMockGraph();
+    const deps: PipelineDeps = {
+      graph,
+      vectors: createMockVectors(),
+      parser: new CodeParser(),
+    };
+
+    const result = await graphUpsertPhase.run(ctx, deps);
+
+    expect(result.success).toBe(true);
+    expect(
+      graph.calls.some((c) => c.cypher.includes("MERGE (fi:File")),
+    ).toBe(true);
+  });
+
+  it("writes unresolved calls to FunctionRef nodes instead of partial Function nodes", async () => {
+    const ctx = createEmptyContext("test-service", servicePath, true);
+    ctx.parseResults.set(
+      "/tmp/handler.ts",
+      baseParseResult({
+        file: "test-service/handler.ts",
+        symbols: [
+          {
+            name: "handle",
+            kind: "function",
+            params: [],
+            returnType: null,
+            docstring: null,
+            calls: [{ name: "missingHelper", line: 3 }],
+            startLine: 1,
+            endLine: 4,
+          },
+        ],
+        functions: [
+          {
+            name: "handle",
+            parameters: [],
+            returnType: null,
+            calls: [{ name: "missingHelper", line: 3 }],
+            startLine: 1,
+            endLine: 4,
+          },
+        ],
+      }),
+    );
+    const graph = createMockGraph();
+    const deps: PipelineDeps = {
+      graph,
+      vectors: createMockVectors(),
+      parser: new CodeParser(),
+    };
+
+    const result = await graphUpsertPhase.run(ctx, deps);
+
+    expect(result.success).toBe(true);
+    expect(
+      graph.calls.some((c) => c.cypher.includes("callee:FunctionRef")),
+    ).toBe(true);
+    expect(
+      graph.calls.some((c) =>
+        c.cypher.includes("MERGE (callee:Function {name: c.calleeName})"),
+      ),
+    ).toBe(false);
   });
 });
 

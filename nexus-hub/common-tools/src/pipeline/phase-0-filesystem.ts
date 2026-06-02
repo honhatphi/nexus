@@ -17,13 +17,29 @@ import type {
 } from "./types.js";
 
 const SKIP_DIRS = new Set([
+  // General
   "node_modules",
   ".git",
   "vendor",
   "dist",
+  "build",
+  "coverage",
+  // Python
   "__pycache__",
   ".venv",
-  "build",
+  // Dart / Flutter
+  ".dart_tool",
+  ".pub-cache",
+  // Android / Java
+  ".gradle",
+  ".cxx",
+  ".externalNativeBuild",
+  // iOS / macOS / Swift
+  "Pods",
+  "DerivedData",
+  ".swiftpm",
+  // Nexus tooling (avoid self-indexing)
+  ".codegraph",
 ]);
 
 const SOURCE_EXTENSIONS = new Set(Object.keys(EXTENSION_MAP));

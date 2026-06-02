@@ -209,6 +209,52 @@ class Calculator {
     expect(result.classes[0].name).toBe("Calculator");
     expect(result.classes[0].methods).toContain("multiply");
   });
+
+  it("tracks parent class for methods with duplicate names", async () => {
+    const result = await parser.parseSource(
+      "validators.ts",
+      `
+class OrderValidator {
+  validate() {
+    return true;
+  }
+}
+
+class UserValidator {
+  validate() {
+    return false;
+  }
+}
+`,
+    );
+
+    const methods = result.symbols.filter((s) => s.name === "validate");
+    expect(methods).toHaveLength(2);
+    expect(methods.map((s) => s.className).sort()).toEqual([
+      "OrderValidator",
+      "UserValidator",
+    ]);
+  });
+
+  it("does not attribute nested function calls to the outer function", async () => {
+    const result = await parser.parseSource(
+      "nested.ts",
+      `
+function outer(items: string[]) {
+  function inner() {
+    hiddenCall();
+  }
+  return items.map((item) => transform(item));
+}
+`,
+    );
+
+    const outer = result.symbols.find((s) => s.name === "outer");
+    expect(outer).toBeDefined();
+    const callNames = outer!.calls.map((c) => c.name);
+    expect(callNames).not.toContain("hiddenCall");
+    expect(callNames).not.toContain("transform");
+  });
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -363,5 +409,32 @@ namespace App {
     expect(result.classes.length).toBeGreaterThanOrEqual(1);
     const cls = result.classes.find((c) => c.name === "PaymentService");
     expect(cls).toBeDefined();
+  });
+
+  it("classifies record and struct members as methods", async () => {
+    const result = await parser.parseSource(
+      "Models.cs",
+      `
+public record PaymentRecord {
+    public bool Validate() {
+        return true;
+    }
+}
+
+public struct PaymentValue {
+    public bool Validate() {
+        return true;
+    }
+}
+`,
+    );
+
+    const methods = result.symbols.filter((s) => s.name === "Validate");
+    expect(methods).toHaveLength(2);
+    expect(methods.every((s) => s.kind === "method")).toBe(true);
+    expect(methods.map((s) => s.className).sort()).toEqual([
+      "PaymentRecord",
+      "PaymentValue",
+    ]);
   });
 });

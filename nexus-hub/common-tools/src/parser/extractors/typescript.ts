@@ -11,6 +11,7 @@ import {
   extractCalls,
   resolveKind,
   extractDocstring,
+  ancestorName,
 } from "../ast-helpers.js";
 
 export function extractTypeScript(root: SyntaxNode): SymbolInfo[] {
@@ -57,6 +58,10 @@ export function extractTypeScript(root: SyntaxNode): SymbolInfo[] {
 
     return {
       name: textOf(nameNode),
+      className:
+        node.type === "method_definition"
+          ? ancestorName(node, ["class_declaration"])
+          : null,
       kind: resolveKind(node.type),
       params,
       returnType: textOf(returnNode) || null,
