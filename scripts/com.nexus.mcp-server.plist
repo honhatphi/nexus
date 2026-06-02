@@ -8,11 +8,11 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/CPS-MKT1-D02072/Workspace/Nexus/scripts/start-mcp-server.sh</string>
+        <string>/Users/CPS-MKT1-D02072/CPS/Workspace/projects/ai/nexus/scripts/start-mcp-server.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/CPS-MKT1-D02072/Workspace/Nexus/mcp-server</string>
+    <string>/Users/CPS-MKT1-D02072/CPS/Workspace/projects/ai/nexus/mcp-server</string>
 
     <key>RunAtLoad</key>
     <true/>

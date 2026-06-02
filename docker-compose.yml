@@ -6,8 +6,8 @@ services:
     image: memgraph/memgraph-platform:${MEMGRAPH_VERSION:-latest}
     container_name: nexus-memgraph
     ports:
-      - "${MEMGRAPH_BOLT_PORT:-7687}:7687"
-      - "${MEMGRAPH_WEB_PORT:-3000}:3000"
+      - "${MEMGRAPH_BOLT_PORT:-17687}:7687"
+      - "${MEMGRAPH_WEB_PORT:-13000}:3000"
     volumes:
       - memgraph_data:/var/lib/memgraph
     restart: unless-stopped
@@ -22,7 +22,7 @@ services:
     image: chromadb/chroma:${CHROMADB_VERSION:-latest}
     container_name: nexus-chromadb
     ports:
-      - "${CHROMADB_PORT:-8000}:8000"
+      - "${CHROMADB_PORT:-18000}:8000"
     volumes:
       - chroma_data:/data
     environment:

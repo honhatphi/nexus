@@ -35,11 +35,13 @@ export interface Config {
 export function loadConfig(): Config {
   return {
     memgraph: {
+      // Default port 17687 matches MEMGRAPH_BOLT_PORT in .env.example / docker-compose
       uri: process.env.MEMGRAPH_URI || "bolt://localhost:17687",
       user: process.env.MEMGRAPH_USER || "",
       password: process.env.MEMGRAPH_PASSWORD || "",
     },
     chromadb: {
+      // Default port 18000 matches CHROMADB_PORT in .env.example / docker-compose
       url: process.env.CHROMADB_URL || "http://localhost:18000",
       token: process.env.CHROMADB_TOKEN || "",
       collection: process.env.CHROMADB_COLLECTION || "nexus_codebase",

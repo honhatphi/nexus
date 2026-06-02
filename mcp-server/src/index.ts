@@ -13,6 +13,7 @@ import { registerContextPackTool } from "./tools/context-pack.js";
 import { registerCodeSnippetTool } from "./tools/code-snippet.js";
 import { registerWorkspaceTools } from "./tools/workspace.js";
 import { registerTaskWorkspaceTools } from "./tools/task-workspace.js";
+import { registerAugmentTool } from "./tools/augment.js";
 import {
   NexusCore,
   MemgraphGraphStore,
@@ -118,6 +119,7 @@ async function main(): Promise<void> {
       registerContextTool(server, core);
       registerDetectChangesTool(server, memgraph);
       registerSyncTool(server, memgraph, chromadb);
+      registerAugmentTool(server, memgraph);
       registerWorkspaceTools(server, indexer);
       registerTaskWorkspaceTools(server, contextPackBuilder, config);
 

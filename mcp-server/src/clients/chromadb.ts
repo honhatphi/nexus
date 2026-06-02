@@ -15,13 +15,18 @@ export class ChromaDBClient {
 
   constructor(config: Config["chromadb"]) {
     // Use `path` constructor (chromadb 3.x) — `ssl/host/port` is deprecated
-    // and routes to a different base URL causing 404s with server 1.4.x
+    // and routes to a different base URL causing 404s with server 1.4.x.
+    // Bearer token auth is passed via fetchOptions.headers (correct 3.x API).
     this.client = new ChromaClient({
       path: config.url,
       ...(config.token
-        ? { auth: { provider: "token", credentials: config.token } }
+        ? {
+            fetchOptions: {
+              headers: { Authorization: `Bearer ${config.token}` },
+            },
+          }
         : {}),
-    } as ConstructorParameters<typeof ChromaClient>[0]);
+    });
     this.collectionName = config.collection;
   }
 

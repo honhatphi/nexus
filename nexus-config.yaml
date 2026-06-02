@@ -17,14 +17,22 @@ hub:
     knowledge-base:
       path: ./nexus-hub/knowledge-base
       description: "Shared KB — architectural decisions, patterns, constraints"
-    prompts:
-      path: ./nexus-hub/prompts
-      description: "Prompt templates dùng chung"
-    patterns:
-      path: ./nexus-hub/patterns
-      description: "Design patterns & code templates chuẩn hoá"
 
 services:
+  - name: loyalty-app
+    path: /Users/CPS-MKT1-D02072/CPS/Workspace/projects/ecommerce/apps/mobile/loyalty-app
+    tech: Dart / Flutter
+    runtime: "Flutter 3.x + Dart SDK >=3.8.0"
+    description: "SMember — CellphoneS loyalty mobile app (iOS + Android). SDUI-driven, Firebase, BLoC/Cubit state management."
+    git:
+      default_branch: main
+    databases:
+      - Firebase (Auth, Firestore, Remote Config)
+    dependencies:
+      - graphql-catalog   # product catalog queries
+      - graphql-search    # search queries
+      - payment           # checkout flow
+
   - name: warehouse-2.0
     path: ./services/warehouse-2.0
     tech: Python
@@ -54,7 +62,6 @@ agent:
       paths:
         - ./nexus-hub/knowledge-base
         - ./nexus-hub/skills
-        - ./nexus-hub/patterns
     - source: local
       description: "Fallback — tìm trong context của service đang làm việc"
 

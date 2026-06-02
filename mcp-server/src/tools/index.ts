@@ -32,10 +32,12 @@ export async function checkAllStaleness(
       const serviceName = svc.name as string;
       const lastCommit = svc.commit as string;
 
-      // Try common service paths
+      // Resolve service path using NEXUS_WORKSPACE_ROOT (or process.cwd() fallback),
+      // then try common sub-directory layouts.
+      const wsRoot = process.env.NEXUS_WORKSPACE_ROOT || process.cwd();
       const paths = [
-        `/workspace/services/${serviceName}`,
-        `/workspace/${serviceName}`,
+        `${wsRoot}/services/${serviceName}`,
+        `${wsRoot}/${serviceName}`,
       ];
 
       for (const svcPath of paths) {
