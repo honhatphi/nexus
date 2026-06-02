@@ -2,7 +2,7 @@
   "name": "nexus-mcp-server",
   "version": "0.1.0",
   "private": true,
-  "description": "MCP Server for Nexus AI Agent — Knowledge Base gateway",
+  "description": "MCP Server for Nexus AI Agent \u2014 Knowledge Base gateway",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "consolidate": "node ../scripts/consolidation.mjs",
-    "consolidate:dry": "node ../scripts/consolidation.mjs --dry-run"
+    "consolidate:dry": "node ../scripts/consolidation.mjs --dry-run",
+    "check-sync": "bash ../scripts/check-sync-summary.sh"
   },
   "engines": {
     "node": ">=20"

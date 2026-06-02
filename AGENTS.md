@@ -49,3 +49,19 @@
 - If a function is called by another service, **do not change its signature** — create a v2 instead.
 - Store any test output, diff, or terminal log with `nexus_store_artifact` and reference by artifact ID.
 - Do not guess token budgets — use the `estimatedTokens` field in tool responses.
+
+## Quick KB sync check
+
+Added a helper script `projects/ai/nexus/scripts/check-sync-summary.sh` to quickly summarize recent Nexus KB sync jobs. Run the script locally to see jobId, service, status, files, symbols indexed, duration, and error counts.
+
+
+### NPM shortcut
+
+You can run the quick sync summary via npm from the MCP server folder:
+
+```bash
+npm --prefix projects/ai/nexus/mcp-server run check-sync
+```
+
+This is useful for Hub Manager or CI scripts that can invoke npm commands.
+
